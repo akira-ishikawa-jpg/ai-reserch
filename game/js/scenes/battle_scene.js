@@ -86,10 +86,9 @@ class BattleScene extends Scene {
     this.floatingTexts = [];
     this.resultData = null;
 
-    // Show encounter message then start first turn
+    // Show encounter message — turn starts after message is dismissed
     this._pushMessage('敵が現れた!');
-    this.engine.startTurn();
-    this._beginNextUnitAction();
+    this._needStartTurn = true;
   }
 
   exit() {
@@ -193,6 +192,13 @@ class BattleScene extends Scene {
   }
 
   _onMessagesComplete() {
+    // First turn start (after "敵が現れた!" message)
+    if (this._needStartTurn) {
+      this._needStartTurn = false;
+      this.engine.startTurn();
+      this._beginNextUnitAction();
+      return;
+    }
     // Check battle result
     if (this.engine.phase === 'victory') {
       this._showVictory();
@@ -201,10 +207,6 @@ class BattleScene extends Scene {
     if (this.engine.phase === 'defeat') {
       this._showDefeat();
       return;
-    }
-    if (this.engine.phase === 'turnEnd') {
-      this.engine.endTurn();
-      this.engine.startTurn();
     }
     this._beginNextUnitAction();
   }
@@ -218,19 +220,20 @@ class BattleScene extends Scene {
       return;
     }
 
+    // Turn is over — queue new turn via message so it goes through the async cycle
+    if (this.engine.phase === 'turnEnd') {
+      this.engine.endTurn();
+      this.engine.startTurn();
+    }
+
     const unit = this.engine.currentUnit;
     if (!unit) {
-      // turn is over
-      if (this.engine.phase === 'turnEnd') {
-        this.engine.endTurn();
-        this.engine.startTurn();
-        this._beginNextUnitAction();
-      }
+      // Safety: no unit and not turnEnd — just wait
       return;
     }
 
     if (unit.isEnemy) {
-      // Enemy AI
+      // Enemy AI — run action, animations will call _beginNextUnitAction when done
       const action = this.engine.decideEnemyAction(unit);
       this._executeAndAnimate(action);
     } else {
