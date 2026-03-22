@@ -437,7 +437,7 @@ const PIXEL_CHARS = {
       down: [
         [
           '..bBBb..',
-          '.BBBBB b.',
+          '.BBBBBb.',
           '.FFEEFF.',
           '.FFFFFF.',
           '..FFFF..',

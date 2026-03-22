@@ -293,6 +293,17 @@ class BattleScene extends Scene {
    */
   _handleTurnEnd() {
     this.engine.endTurn();
+
+    // Check victory/defeat before starting a new turn
+    if (this.engine.enemies.every(e => !e.alive)) {
+      this._showVictory();
+      return;
+    }
+    if (this.engine.allies.every(a => !a.alive)) {
+      this._showDefeat();
+      return;
+    }
+
     this.engine.startTurn();
     // After startTurn(), phase should be 'input' and currentIndex set.
     // Go to startTurn state on the NEXT frame.
@@ -444,11 +455,15 @@ class BattleScene extends Scene {
       return;
     }
 
-    if (skill.type === 'heal') {
+    if (skill.target === TARGETS.ALLY_ALL || skill.target === TARGETS.ENEMY_ALL) {
+      this._executeAndAnimate({ type: 'skill', actor: unit, skill });
+    } else if (skill.type === SKILL_TYPES.HEAL) {
       const allies = this.engine.allies.filter(a => a.alive);
       const target = allies.reduce((low, a) => (a.hp / a.maxHp) < (low.hp / low.maxHp) ? a : low, allies[0]);
       this._executeAndAnimate({ type: 'skill', actor: unit, target, skill });
-    } else if (skill.target === 'allEnemies') {
+    } else if (skill.target === TARGETS.SELF) {
+      this._executeAndAnimate({ type: 'skill', actor: unit, target: unit, skill });
+    } else {
       this._executeAndAnimate({ type: 'skill', actor: unit, skill });
     } else {
       const target = this.engine.enemies.find(e => e.alive);
@@ -491,6 +506,9 @@ class BattleScene extends Scene {
           break;
         case 'mpHeal':
           this.animQueue.push({ type: 'healAnim', target: r.target, amount: r.amount, duration: 0.6, isMp: true });
+          break;
+        case 'buff':
+          this.animQueue.push({ type: 'message', text: r.text, duration: 0.8 });
           break;
         case 'guard':
           this.animQueue.push({ type: 'guard', unit: r.unit, duration: 0.5, text: r.text });
@@ -649,6 +667,9 @@ class BattleScene extends Scene {
     this.resultTimer = 0;
     this.uiState = 'result';
     this._syncBackToParty();
+    if (this.game.state.party) {
+      this.game.state.party.distributeExp(exp);
+    }
   }
 
   _showDefeat() {

@@ -381,6 +381,11 @@ class PartyManager {
     this.activeSlots = 3;
   }
 
+  /** リーダー（先頭メンバー）を返す */
+  getLeader() {
+    return this.members.length > 0 ? this.members[0] : null;
+  }
+
   /** メンバーを追加 */
   addMember(character) {
     this.members.push(character);

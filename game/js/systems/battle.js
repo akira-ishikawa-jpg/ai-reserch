@@ -238,9 +238,9 @@ class BattleEngine {
 
         actor.mp -= (skill.mpCost || 0);
 
-        if (skill.target === 'allEnemies' || skill.target === 'allAllies') {
+        if (skill.target === TARGETS.ENEMY_ALL || skill.target === TARGETS.ALLY_ALL) {
           // 全体スキル
-          const targets = skill.target === 'allEnemies'
+          const targets = skill.target === TARGETS.ENEMY_ALL
             ? (actor.isEnemy ? this.allies : this.enemies).filter(u => u.alive)
             : (actor.isEnemy ? this.enemies : this.allies).filter(u => u.alive);
 
@@ -358,7 +358,9 @@ class BattleEngine {
 
   _applySkill(actor, target, skill) {
     const season = skill.season || actor.currentSeason;
-    const isHeal = skill.type === 'heal';
+    const isHeal = skill.type === SKILL_TYPES.HEAL;
+    const isBuff = skill.type === SKILL_TYPES.BUFF;
+    const isDebuff = skill.type === SKILL_TYPES.DEBUFF;
 
     if (isHeal) {
       const amount = Math.floor((actor.matk || actor.atk) * (skill.power || 1.0) * (0.9 + Math.random() * 0.2));
@@ -370,6 +372,26 @@ class BattleEngine {
         amount: healed,
         season,
         text: `${actor.name}の${skill.name}! ${target.name}のHPが${healed}回復`,
+      };
+    }
+
+    if (isBuff || isDebuff) {
+      let text = `${actor.name}の${skill.name}!`;
+      if (skill.effects) {
+        for (const eff of skill.effects) {
+          if (eff.type === 'statusResist' || eff.type === 'atkUp' || eff.type === 'defUp' || eff.type === 'matkUp' || eff.type === 'mdefUp' || eff.type === 'seasonAtkUp' || eff.type === 'evasionUp') {
+            text += ` ${target.name}に${skill.description || 'バフ'}`;
+          } else if (eff.type === 'absorbBarrier') {
+            text += ` ${target.name}にバリアを展開`;
+          }
+        }
+      }
+      return {
+        type: 'buff',
+        actor,
+        target,
+        season,
+        text,
       };
     }
 

@@ -38,6 +38,7 @@ class DialogueScene extends Scene {
   enter(data) {
     this.blinkTimer = 0;
     this.enterFade = 0;
+    this._pendingTransition = null;
 
     if (data && data.dialogueId) {
       this.engine.start(data.dialogueId);
@@ -139,9 +140,10 @@ class DialogueScene extends Scene {
     // onComplete === null → 前のシーンに戻る or 探索シーンへ
     if (result.onComplete === null) {
       this.game.renderer.startFade(1, 0.02);
+      const popData = { result: 'dialogue_end', action: result.action || null };
       this._pendingTransition = () => {
         if (this.game.scenes.sceneStack.length > 0) {
-          this.game.scenes.pop();
+          this.game.scenes.pop(popData);
         } else {
           // スタックが空の場合（プロローグ直後など）→探索シーンへ
           this.game.scenes.switch(SCENES.EXPLORATION, { mapId: 'kasumikari' });
@@ -161,7 +163,7 @@ class DialogueScene extends Scene {
     // === 背景: 暗い背景 ===
     renderer.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT, '#0a0a15', 1);
     // 季節カラーのわずかなアクセント（上部にグラデーション風）
-    const currentSeason = this.game.state.currentSeason || SEASON.SPRING;
+    const currentSeason = (this.game.state.party && this.game.state.party.getLeader()) ? this.game.state.party.getLeader().currentSeason : SEASON.SPRING;
     const seasonColor = SEASON_COLORS[currentSeason].primary;
     renderer.drawRect(0, 0, GAME_WIDTH, 200, seasonColor, 0.08);
 

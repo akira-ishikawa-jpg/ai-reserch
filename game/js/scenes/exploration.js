@@ -1188,7 +1188,7 @@ class ExplorationScene extends Scene {
     renderer.drawPixelChar(px + 2, py - 2, 3, 'hero', {
       direction: this.player.direction,
       frame: this.player.moving ? this.player.animFrame : 0,
-      season: this.game.state.currentSeason || null,
+      season: (this.game.state.party && this.game.state.party.getLeader()) ? this.game.state.party.getLeader().currentSeason : null,
     });
   }
 

@@ -52,7 +52,6 @@ class Game {
   update(dt) {
     this.scenes.update(dt);
     this.renderer.updateParticles();
-    this.renderer.updateFade();
   }
 
   draw() {

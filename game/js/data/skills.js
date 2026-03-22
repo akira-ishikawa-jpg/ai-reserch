@@ -394,7 +394,7 @@ const SKILLS = {
     effects: [],
   },
 
-  kageroу: {
+  kagerou: {
     id: 'kagerou',
     name: '陽炎',
     season: 'autumn',
