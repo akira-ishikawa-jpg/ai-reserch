@@ -1,6 +1,7 @@
 extends Node3D
 ## 探索シーンメイン
 ## マップデータを3D空間に配置し、プレイヤーの移動・マップ遷移を管理する
+## HD-2D演出：建物CSG生成、降り注ぐ光、光の粒パーティクル、スプライトリムライト
 
 @onready var camera: Camera3D = $Camera3D
 @onready var player: Node3D = $Characters/Player
@@ -10,6 +11,11 @@ extends Node3D
 # 現在のマップデータ
 var current_map_data: Dictionary = {}
 var npc_sprites: Array[Sprite3D] = []
+
+# HD-2D演出ノード
+var _floating_particles: GPUParticles3D = null
+var _light_rays_mesh: MeshInstance3D = null
+var _rimlight_shader: ShaderMaterial = null
 
 func _ready():
 	# カメラのターゲット設定
@@ -23,6 +29,11 @@ func _ready():
 
 	GameState.current_map = current_map_data.get("id", "kasumikari")
 	_setup_season_lighting()
+
+	# HD-2D演出セットアップ
+	_setup_floating_particles()
+	_setup_light_rays()
+	_setup_rimlight_shader()
 
 # ==========================================
 # マップ構築
@@ -46,6 +57,10 @@ func load_map(map_id: String, spawn_pos: Vector2i = Vector2i(-1, -1)):
 		for x in range(map_w):
 			var tile_type: int = tiles[y][x]
 			_place_tile(x, y, tile_type, map_id)
+
+	# 建物配置（町マップのみ）
+	if not map_id.begins_with("sennen"):
+		_place_buildings()
 
 	# NPC配置
 	_place_npcs()
@@ -82,6 +97,10 @@ func _clear_map():
 		if is_instance_valid(npc_sprite):
 			npc_sprite.get_parent().queue_free()
 	npc_sprites.clear()
+	# 建物ノード削除
+	for child in get_children():
+		if child.name.begins_with("Building_"):
+			child.queue_free()
 
 func _place_tile(x: int, y: int, tile_type: int, map_id: String):
 	if tile_type == MapsData.TILE_WALL:
@@ -297,3 +316,159 @@ func _try_interact():
 		if check_x == npc_data["x"] and check_y == npc_data["y"]:
 			print("[NPC] " + npc_data["name"] + " に話しかけた")
 			return
+
+# ==========================================
+# HD-2D: 建物配置
+# ==========================================
+
+func _place_buildings():
+	var npcs: Array = current_map_data.get("npcs", [])
+	for npc_data in npcs:
+		var btype = BuildingGenerator.BuildingType.HOUSE_SMALL
+		match npc_data["id"]:
+			"innkeeper":
+				btype = BuildingGenerator.BuildingType.INN
+			"merchant":
+				btype = BuildingGenerator.BuildingType.SHOP
+			"yakushi_master":
+				btype = BuildingGenerator.BuildingType.GUILD
+
+		# NPC位置から少し奥（-Z方向）に建物を配置
+		var build_pos = Vector3(npc_data["x"], 0, npc_data["y"] - 2)
+		var building = BuildingGenerator.create_building(btype, build_pos)
+		add_child(building)
+
+# ==========================================
+# HD-2D: 光の粒パーティクル（フワフワ舞う）
+# ==========================================
+
+func _setup_floating_particles():
+	if _floating_particles != null:
+		return
+
+	var particles = GPUParticles3D.new()
+	particles.name = "FloatingLights"
+	particles.amount = 30
+	particles.lifetime = 8.0
+	particles.visibility_aabb = AABB(Vector3(-15, -2, -15), Vector3(30, 6, 30))
+
+	var mat = ParticleProcessMaterial.new()
+	mat.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_BOX
+	mat.emission_box_extents = Vector3(10, 3, 10)
+	mat.direction = Vector3(0, 1, 0)
+	mat.initial_velocity_min = 0.1
+	mat.initial_velocity_max = 0.3
+	mat.gravity = Vector3(0, -0.05, 0)
+	mat.turbulence_enabled = true
+	mat.turbulence_noise_speed_random = 0.5
+	mat.scale_min = 0.02
+	mat.scale_max = 0.05
+	mat.color = Color(1.0, 0.95, 0.8, 0.6)
+
+	particles.process_material = mat
+
+	# ドローパス（小さな光る球）
+	var sphere = SphereMesh.new()
+	sphere.radius = 0.02
+	sphere.height = 0.04
+	var draw_mat = StandardMaterial3D.new()
+	draw_mat.albedo_color = Color(1.0, 0.95, 0.8)
+	draw_mat.emission_enabled = true
+	draw_mat.emission = Color(1.0, 0.9, 0.7)
+	draw_mat.emission_energy_multiplier = 2.0
+	draw_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	sphere.material = draw_mat
+	particles.draw_pass_1 = sphere
+
+	add_child(particles)
+	_floating_particles = particles
+
+# ==========================================
+# HD-2D: 降り注ぐ光（LightRays）
+# ==========================================
+
+func _setup_light_rays():
+	if _light_rays_mesh != null:
+		return
+
+	# light_rays.gdshader をロード
+	var shader = load("res://shaders/light_rays.gdshader")
+	if shader == null:
+		push_warning("light_rays.gdshader not found — skipping light rays setup")
+		return
+
+	var shader_mat = ShaderMaterial.new()
+	shader_mat.shader = shader
+
+	# 大きな垂直面メッシュ（カメラに向かって配置）
+	var mesh_inst = MeshInstance3D.new()
+	mesh_inst.name = "LightRaysMesh"
+
+	var quad = QuadMesh.new()
+	quad.size = Vector2(20, 10)
+	mesh_inst.mesh = quad
+
+	mesh_inst.material_override = shader_mat
+	# プレイヤーの前方上空に配置（カメラの視界に入るよう）
+	mesh_inst.position = Vector3(14, 5, 10)
+	# カメラと平行になるよう少し傾ける
+	mesh_inst.rotation_degrees = Vector3(-30, 0, 0)
+
+	# 季節に応じた光の色
+	match GameState.current_season:
+		"spring":
+			shader_mat.set_shader_parameter("color_bright", Color(1.0, 0.95, 0.85, 0.12))
+			shader_mat.set_shader_parameter("color_dim", Color(1.0, 0.9, 0.75, 0.02))
+		"summer":
+			shader_mat.set_shader_parameter("color_bright", Color(1.0, 1.0, 0.9, 0.15))
+			shader_mat.set_shader_parameter("color_dim", Color(1.0, 0.95, 0.8, 0.03))
+		"autumn":
+			shader_mat.set_shader_parameter("color_bright", Color(1.0, 0.85, 0.6, 0.13))
+			shader_mat.set_shader_parameter("color_dim", Color(1.0, 0.8, 0.55, 0.02))
+		"winter":
+			shader_mat.set_shader_parameter("color_bright", Color(0.85, 0.9, 1.0, 0.1))
+			shader_mat.set_shader_parameter("color_dim", Color(0.8, 0.85, 0.95, 0.02))
+
+	add_child(mesh_inst)
+	_light_rays_mesh = mesh_inst
+
+# ==========================================
+# HD-2D: スプライトリムライト
+# ==========================================
+
+func _setup_rimlight_shader():
+	var shader = load("res://shaders/sprite_rimlight.gdshader")
+	if shader == null:
+		push_warning("sprite_rimlight.gdshader not found — skipping rimlight setup")
+		return
+
+	_rimlight_shader = ShaderMaterial.new()
+	_rimlight_shader.shader = shader
+
+	# 季節に応じたリムライト色
+	match GameState.current_season:
+		"spring":
+			_rimlight_shader.set_shader_parameter("rim_color", Color(1.0, 0.95, 0.85, 1.0))
+		"summer":
+			_rimlight_shader.set_shader_parameter("rim_color", Color(1.0, 1.0, 0.9, 1.0))
+		"autumn":
+			_rimlight_shader.set_shader_parameter("rim_color", Color(1.0, 0.85, 0.6, 1.0))
+		"winter":
+			_rimlight_shader.set_shader_parameter("rim_color", Color(0.85, 0.9, 1.0, 1.0))
+
+	_rimlight_shader.set_shader_parameter("rim_width", 1.5)
+	_rimlight_shader.set_shader_parameter("rim_intensity", 0.6)
+	_rimlight_shader.set_shader_parameter("rim_softness", 0.4)
+
+	# プレイヤースプライトに適用
+	var player_tex = player_sprite.texture
+	if player_tex:
+		_rimlight_shader.set_shader_parameter("sprite_texture", player_tex)
+		player_sprite.material_override = _rimlight_shader
+
+	# NPC スプライトにもリムライト適用
+	for npc_sprite in npc_sprites:
+		if is_instance_valid(npc_sprite) and npc_sprite.texture:
+			var npc_rim = _rimlight_shader.duplicate()
+			npc_rim.set_shader_parameter("sprite_texture", npc_sprite.texture)
+			npc_sprite.material_override = npc_rim
