@@ -67,6 +67,8 @@ class BattleScene extends Scene {
   // ============ Scene lifecycle ============
 
   enter(data) {
+    this._error = null;
+    try {
     this.bgColor = data.background || '#FFF0F5';
     this.background = data.season || SEASON.SPRING;
 
@@ -107,6 +109,13 @@ class BattleScene extends Scene {
 
     // Show encounter message, then go to startTurn
     this._showMessages(['敵が現れた!'], 'firstTurn');
+    } catch(e) {
+      console.error('[BattleScene] enter error:', e.message, e.stack);
+      this._error = e.message;
+      // フェードを強制リセット
+      this.game.renderer.fadeAlpha = 0;
+      this.game.renderer.fadeTarget = 0;
+    }
   }
 
   exit() {
@@ -737,8 +746,19 @@ class BattleScene extends Scene {
   // ============ Draw ============
 
   draw(renderer) {
-    if (!this.engine) return;
     renderer.ctx.globalAlpha = 1;
+    if (this._error) {
+      renderer.clear('#300');
+      renderer.drawText('Battle Error: ' + this._error, 20, 20, {size: 16, color: '#F00'});
+      renderer.drawText('Press Space to return', 20, 50, {size: 14, color: '#FFF'});
+      if (this.game.input.isJustPressed(' ')) this.game.scenes.pop();
+      return;
+    }
+    if (!this.engine) {
+      renderer.clear('#300');
+      renderer.drawText('Engine not initialized', 20, 20, {size: 16, color: '#F00'});
+      return;
+    }
 
     this._drawBackground(renderer);
     this._drawUnits(renderer);
