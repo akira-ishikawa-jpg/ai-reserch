@@ -1,6 +1,12 @@
 // ============================================================
 // BattleScene — 四季廻りの職人 バトル画面描画・UI・アニメーション
 // ============================================================
+// 設計方針:
+//   - ステートマシンは update() の switch で駆動し、各フレームで1つの状態だけ処理する
+//   - 状態遷移は uiState の書き換えのみで行い、遷移先の処理は次フレームに委ねる
+//   - _beginNextUnitAction() のような同期再帰呼び出しは一切行わない
+//   - 安全装置: 1フレーム内の状態遷移回数をカウントし、上限でbreak
+// ============================================================
 
 class BattleScene extends Scene {
   constructor(game) {
@@ -11,7 +17,10 @@ class BattleScene extends Scene {
     this.engine = null;
 
     // UI state
-    this.uiState = 'idle';  // idle | command | skillSelect | itemSelect | targetSelect | animating | message | result
+    //   idle → message → startTurn → (enemyAction | command) → animating → startTurn ...
+    //   → turnEnd → startTurn
+    //   → result
+    this.uiState = 'idle';
     this.selectedCommand = 0;
     this.selectedSkill = 0;
     this.selectedItem = 0;
@@ -27,20 +36,20 @@ class BattleScene extends Scene {
     this.messageQueue = [];
     this.messageTimer = 0;
     this.currentMessage = '';
+    this._afterMessage = null; // state to transition to after messages are done
 
     // battle data
     this.background = SEASON.SPRING;
-    this.turnProcessing = false;
 
     // visual positions
     this.allyPositions = [];
     this.enemyPositions = [];
 
     // sprite offsets for attack animation
-    this.spriteOffsets = new Map();  // unit -> {x, y}
+    this.spriteOffsets = new Map();
 
     // floating damage numbers
-    this.floatingTexts = [];  // {text, x, y, color, timer, vy}
+    this.floatingTexts = [];
 
     // result screen
     this.resultData = null;
@@ -79,16 +88,15 @@ class BattleScene extends Scene {
     }
 
     // Reset state
-    this.uiState = 'idle';
     this.animQueue = [];
     this.currentAnim = null;
     this.messageQueue = [];
     this.floatingTexts = [];
     this.resultData = null;
+    this._afterMessage = null;
 
-    // Show encounter message — turn starts after message is dismissed
-    this._pushMessage('敵が現れた!');
-    this._needStartTurn = true;
+    // Show encounter message, then go to startTurn
+    this._showMessages(['敵が現れた!'], 'firstTurn');
   }
 
   exit() {
@@ -113,6 +121,28 @@ class BattleScene extends Scene {
     }));
   }
 
+  // ============ Safe message system ============
+  // _showMessages: queue messages and specify which state to go to after all are shown.
+  // No callbacks, no recursive calls — just a state name string.
+
+  _showMessages(texts, afterState) {
+    this.messageQueue = texts.slice();
+    this._afterMessage = afterState;
+    this._advanceMessageQueue();
+  }
+
+  _advanceMessageQueue() {
+    if (this.messageQueue.length === 0) {
+      // All messages shown — transition to the designated next state
+      this.uiState = this._afterMessage || 'startTurn';
+      this._afterMessage = null;
+      return;
+    }
+    this.currentMessage = this.messageQueue.shift();
+    this.messageTimer = 1.2;
+    this.uiState = 'message';
+  }
+
   // ============ Update ============
 
   update(dt) {
@@ -125,7 +155,7 @@ class BattleScene extends Scene {
       const ft = this.floatingTexts[i];
       ft.timer -= dt;
       ft.y += ft.vy * dt;
-      ft.vy -= 60 * dt; // slow down
+      ft.vy -= 60 * dt;
       if (ft.timer <= 0) this.floatingTexts.splice(i, 1);
     }
 
@@ -134,26 +164,51 @@ class BattleScene extends Scene {
       this.game.renderer.addParticle(this.background, Math.random() * GAME_WIDTH, Math.random() * 300);
     }
 
-    // State machine
+    // State machine — each case does ONE thing and sets uiState for the NEXT frame
     switch (this.uiState) {
+
       case 'message':
         this._updateMessage(dt, input);
         break;
+
+      case 'firstTurn':
+        // One-time state: start the first turn after encounter message
+        this.engine.startTurn();
+        this.uiState = 'startTurn';
+        break;
+
+      case 'startTurn':
+        this._handleStartTurn();
+        break;
+
+      case 'enemyAction':
+        this._handleEnemyAction();
+        break;
+
       case 'command':
         this._updateCommand(dt, input);
         break;
+
       case 'skillSelect':
         this._updateSkillSelect(dt, input);
         break;
+
       case 'itemSelect':
         this._updateItemSelect(dt, input);
         break;
+
       case 'targetSelect':
         this._updateTargetSelect(dt, input);
         break;
+
       case 'animating':
         this._updateAnimation(dt);
         break;
+
+      case 'turnEnd':
+        this._handleTurnEnd();
+        break;
+
       case 'result':
         this._updateResult(dt, input);
         break;
@@ -162,44 +217,25 @@ class BattleScene extends Scene {
 
   // ============ Message display ============
 
-  _pushMessage(text) {
-    this.messageQueue.push(text);
-    if (this.uiState !== 'message' && this.uiState !== 'animating') {
-      this._showNextMessage();
-    }
-  }
-
-  _showNextMessage() {
-    if (this.messageQueue.length === 0) {
-      this._onMessagesComplete();
-      return;
-    }
-    this.currentMessage = this.messageQueue.shift();
-    this.messageTimer = 1.2;
-    this.uiState = 'message';
-  }
-
   _updateMessage(dt, input) {
     this.messageTimer -= dt;
-    // tap or key to skip
     const tap = input.consumeTap();
     if (tap || input.isJustPressed('Enter') || input.isJustPressed(' ')) {
       this.messageTimer = 0;
     }
     if (this.messageTimer <= 0) {
-      this._showNextMessage();
+      this._advanceMessageQueue();
     }
   }
 
-  _onMessagesComplete() {
-    // First turn start (after "敵が現れた!" message)
-    if (this._needStartTurn) {
-      this._needStartTurn = false;
-      this.engine.startTurn();
-      this._beginNextUnitAction();
-      return;
-    }
-    // Check battle result
+  // ============ Turn flow (no recursion) ============
+
+  /**
+   * startTurn state: determine what the current unit should do.
+   * Runs once per frame — sets uiState and returns.
+   */
+  _handleStartTurn() {
+    // Check victory/defeat first
     if (this.engine.phase === 'victory') {
       this._showVictory();
       return;
@@ -208,45 +244,65 @@ class BattleScene extends Scene {
       this._showDefeat();
       return;
     }
-    this._beginNextUnitAction();
-  }
 
-  // ============ Turn flow ============
-
-  _beginNextUnitAction() {
-    // Check battle end first
-    if (this.engine.phase === 'victory' || this.engine.phase === 'defeat') {
-      this._onMessagesComplete();
-      return;
-    }
-
-    // Turn is over — queue new turn via message so it goes through the async cycle
+    // If the engine says turnEnd, go to turnEnd state (processed next frame)
     if (this.engine.phase === 'turnEnd') {
-      this.engine.endTurn();
-      this.engine.startTurn();
+      this.uiState = 'turnEnd';
+      return;
     }
 
     const unit = this.engine.currentUnit;
     if (!unit) {
-      // Safety: no unit and not turnEnd — just wait
+      // No unit available — treat as turnEnd
+      this.uiState = 'turnEnd';
       return;
     }
 
     if (unit.isEnemy) {
-      // Enemy AI — run action, animations will call _beginNextUnitAction when done
-      const action = this.engine.decideEnemyAction(unit);
-      this._executeAndAnimate(action);
+      // Enemy: go to enemyAction state (processed next frame, guaranteeing 1-frame gap)
+      this.uiState = 'enemyAction';
     } else {
-      // Player input
+      // Player: show command menu
       this.selectedCommand = 0;
       this.uiState = 'command';
     }
   }
 
+  /**
+   * enemyAction state: decide and execute enemy action, then go to animating.
+   */
+  _handleEnemyAction() {
+    const unit = this.engine.currentUnit;
+    if (!unit || !unit.isEnemy) {
+      // Safety: shouldn't happen, go back to startTurn
+      this.uiState = 'startTurn';
+      return;
+    }
+    const action = this.engine.decideEnemyAction(unit);
+    this._executeAndAnimate(action);
+  }
+
+  /**
+   * turnEnd state: run end-of-turn logic, then start a new turn.
+   */
+  _handleTurnEnd() {
+    this.engine.endTurn();
+    this.engine.startTurn();
+    // After startTurn(), phase should be 'input' and currentIndex set.
+    // Go to startTurn state on the NEXT frame.
+    this.uiState = 'startTurn';
+  }
+
   _executeAndAnimate(action) {
     const results = this.engine.executeAction(action);
     this._queueAnimations(action, results);
-    this.uiState = 'animating';
+
+    // If there are animations, play them. If not, go straight to startTurn (next frame).
+    if (this.animQueue.length > 0) {
+      this.uiState = 'animating';
+    } else {
+      this.uiState = 'startTurn';
+    }
   }
 
   // ============ Command input ============
@@ -255,7 +311,7 @@ class BattleScene extends Scene {
     const unit = this.engine.currentUnit;
     if (!unit) return;
 
-    // Keyboard: 1-4 for direct select, arrows for nav
+    // Keyboard: arrows for nav
     if (input.isJustPressed('ArrowUp') || input.isJustPressed('w')) {
       this.selectedCommand = (this.selectedCommand + 3) % 4;
     }
@@ -318,19 +374,18 @@ class BattleScene extends Scene {
         break;
       case 2: // スキル
         if (unit.skillSealTurns > 0) {
-          this._pushMessage('スキルが封印されている!');
+          this._showMessages(['スキルが封印されている!'], 'command');
           return;
         }
         if (!unit.skills || unit.skills.length === 0) {
-          this._pushMessage('使えるスキルがない!');
+          this._showMessages(['使えるスキルがない!'], 'command');
           return;
         }
         this.selectedSkill = 0;
         this.uiState = 'skillSelect';
         break;
       case 3: // アイテム
-        // TODO: real inventory system
-        this._pushMessage('アイテムがない!');
+        this._showMessages(['アイテムがない!'], 'command');
         break;
     }
   }
@@ -366,7 +421,6 @@ class BattleScene extends Scene {
         this.selectedSkill = idx;
         this._confirmSkill();
       } else {
-        // back button area (left side)
         if (tap.x < 500) {
           this.uiState = 'command';
         }
@@ -380,20 +434,17 @@ class BattleScene extends Scene {
     if (!skill) return;
 
     if (unit.mp < (skill.mpCost || 0)) {
-      this._pushMessage('MPが足りない!');
+      this._showMessages(['MPが足りない!'], 'skillSelect');
       return;
     }
 
-    // For heal skills, target self/ally; for attack, target enemy
     if (skill.type === 'heal') {
-      // auto-target lowest HP ally
       const allies = this.engine.allies.filter(a => a.alive);
       const target = allies.reduce((low, a) => (a.hp / a.maxHp) < (low.hp / low.maxHp) ? a : low, allies[0]);
       this._executeAndAnimate({ type: 'skill', actor: unit, target, skill });
     } else if (skill.target === 'allEnemies') {
       this._executeAndAnimate({ type: 'skill', actor: unit, skill });
     } else {
-      // single target — pick first living enemy for now
       const target = this.engine.enemies.find(e => e.alive);
       this._executeAndAnimate({ type: 'skill', actor: unit, target, skill });
     }
@@ -402,7 +453,14 @@ class BattleScene extends Scene {
   // ============ Target select (future use) ============
 
   _updateTargetSelect(dt, input) {
-    // placeholder for manual target selection
+    if (input.isJustPressed('Escape')) {
+      this.uiState = 'command';
+    }
+  }
+
+  // ============ Item select (placeholder) ============
+
+  _updateItemSelect(dt, input) {
     if (input.isJustPressed('Escape')) {
       this.uiState = 'command';
     }
@@ -411,9 +469,7 @@ class BattleScene extends Scene {
   // ============ Animation system ============
 
   _queueAnimations(action, results) {
-    // Build a sequence of animation steps
     this.animQueue = [];
-    const actor = action.actor;
 
     for (const r of results) {
       switch (r.type) {
@@ -447,6 +503,7 @@ class BattleScene extends Scene {
   }
 
   _updateAnimation(dt) {
+    // Currently playing an animation step
     if (this.currentAnim) {
       this.animTimer -= dt;
       this._tickAnim(this.currentAnim, dt);
@@ -454,31 +511,25 @@ class BattleScene extends Scene {
         this._finishAnim(this.currentAnim);
         this.currentAnim = null;
       }
-      return;
+      return; // wait for next frame
     }
 
-    // Next animation in queue
+    // Pick next animation from queue
     if (this.animQueue.length > 0) {
       this.currentAnim = this.animQueue.shift();
       this.animTimer = this.currentAnim.duration || 0.5;
       this._startAnim(this.currentAnim);
-      return;
+      return; // wait for next frame
     }
 
-    // All animations done — log messages and move on
-    const logEntries = this.engine.log.splice(0);
-    for (const entry of logEntries) {
-      // already shown via floating text / messages, skip
-    }
-
-    // Next unit
-    this._beginNextUnitAction();
+    // All animations done — drain engine log and go to startTurn (next frame)
+    this.engine.log.splice(0);
+    this.uiState = 'startTurn';
   }
 
   _startAnim(anim) {
     switch (anim.type) {
       case 'attack': {
-        // Actor moves toward target
         const actorPos = this._getUnitPosition(anim.actor);
         const targetPos = this._getUnitPosition(anim.target);
         if (actorPos && targetPos) {
@@ -490,7 +541,6 @@ class BattleScene extends Scene {
         break;
       }
       case 'hit': {
-        // Show damage number
         const pos = this._getUnitPosition(anim.target);
         if (pos) {
           const color = anim.critical ? '#FFD700' : '#FFF';
@@ -503,11 +553,9 @@ class BattleScene extends Scene {
             vy: -80,
             size: anim.critical ? 28 : 22,
           });
-          // Screen shake for big damage
           if (anim.damage > 30 || anim.critical) {
             this.game.renderer.screenShake = Math.min(12, anim.damage * 0.2);
           }
-          // Season-colored particles
           if (anim.season) {
             for (let i = 0; i < 8; i++) {
               this.game.renderer.addParticle(anim.season, pos.x + Math.random() * 40, pos.y + Math.random() * 40);
@@ -533,23 +581,19 @@ class BattleScene extends Scene {
         break;
       }
       case 'guard': {
-        // brief flash on unit
         break;
       }
       case 'flash': {
-        // season change flash
         if (anim.text) {
           this.currentMessage = anim.text;
         }
         break;
       }
       case 'unity': {
-        // big screen flash
         this.game.renderer.screenShake = 15;
         if (anim.text) {
           this.currentMessage = anim.text;
         }
-        // lots of particles
         const season = anim.season;
         for (let i = 0; i < 30; i++) {
           this.game.renderer.addParticle(season, Math.random() * GAME_WIDTH, Math.random() * GAME_HEIGHT * 0.7);
@@ -564,7 +608,6 @@ class BattleScene extends Scene {
   }
 
   _tickAnim(anim, dt) {
-    // Smooth return for attack offset
     if (anim.type === 'attack') {
       const offset = this.spriteOffsets.get(anim.actor);
       if (offset && this.animTimer < anim.duration * 0.4) {
@@ -599,8 +642,6 @@ class BattleScene extends Scene {
     this.resultData = { result: 'victory', exp };
     this.resultTimer = 0;
     this.uiState = 'result';
-
-    // Sync HP/MP back to party
     this._syncBackToParty();
   }
 
@@ -650,7 +691,6 @@ class BattleScene extends Scene {
   }
 
   _hitTestUnity(x, y) {
-    // Unity button drawn at 740, 430
     return x >= 740 && x <= 940 && y >= 430 && y <= 472;
   }
 
@@ -708,25 +748,21 @@ class BattleScene extends Scene {
 
   _drawBackground(renderer) {
     const colors = SEASON_COLORS[this.background] || SEASON_COLORS[SEASON.SPRING];
-    // Gradient-like layers
     renderer.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT, colors.bg);
     renderer.drawRect(0, 0, GAME_WIDTH, 80, colors.secondary, 0.3);
     renderer.drawRect(0, 350, GAME_WIDTH, 190, colors.primary, 0.15);
-    // ground
     renderer.drawRect(0, 380, GAME_WIDTH, 160, '#2a2a3a', 0.8);
   }
 
   // ---- Units ----
 
   _drawUnits(renderer) {
-    // allies
     for (let i = 0; i < this.engine.allies.length; i++) {
       const u = this.engine.allies[i];
       const pos = this.allyPositions[i];
       if (!pos) continue;
       this._drawUnit(renderer, u, pos, false);
     }
-    // enemies
     for (let i = 0; i < this.engine.enemies.length; i++) {
       const u = this.engine.enemies[i];
       const pos = this.enemyPositions[i];
@@ -743,18 +779,15 @@ class BattleScene extends Scene {
     const h = 64;
 
     if (!unit.alive) {
-      // dead: faded and tilted
       renderer.drawRect(x, y + h * 0.6, w, h * 0.4, '#555', 0.4);
       return;
     }
 
-    // Guard visual
     if (unit.isGuarding) {
       renderer.drawRoundedRect(x - 6, y - 6, w + 12, h + 12, 6, null, SEASON_COLORS[unit.currentSeason].primary);
       renderer.drawRect(x - 4, y - 4, w + 8, h + 8, SEASON_COLORS[unit.currentSeason].primary, 0.15);
     }
 
-    // Sprite
     const seasonColor = SEASON_COLORS[unit.currentSeason];
     const sprite = unit.spriteData || { bodyColor: isEnemy ? '#8B0000' : '#336699', headColor: isEnemy ? '#CC4444' : '#6699CC' };
     renderer.drawSprite(x, y, w, h, {
@@ -763,30 +796,25 @@ class BattleScene extends Scene {
       season: unit.currentSeason,
     });
 
-    // Name
     renderer.drawText(unit.name, x + w / 2, y - 18, {
       size: 12, align: 'center', color: isEnemy ? '#FF9999' : '#99CCFF',
     });
 
-    // Enemy HP bar (small, above sprite)
     if (isEnemy) {
       renderer.drawBar(x, y - 8, w, 5, unit.hp, unit.maxHp, '#E74C3C', '#333');
     }
 
-    // Season indicator dot
     const dotColor = seasonColor.primary;
     renderer.drawRect(x + w / 2 - 4, y + h + 4, 8, 8, dotColor);
     renderer.drawText(SEASON_NAMES[unit.currentSeason], x + w / 2, y + h + 14, {
       size: 10, align: 'center', color: dotColor,
     });
 
-    // Stun indicator
     if (unit.stunTurns > 0) {
       renderer.drawText('凍結', x + w / 2, y + h / 2, {
         size: 14, align: 'center', color: '#88CCFF',
       });
     }
-    // Seal indicator
     if (unit.skillSealTurns > 0) {
       renderer.drawText('封印', x + w / 2, y + h / 2 + 16, {
         size: 12, align: 'center', color: '#CC88FF',
@@ -798,7 +826,6 @@ class BattleScene extends Scene {
 
   _drawFloatingTexts(renderer) {
     for (const ft of this.floatingTexts) {
-      const alpha = Math.min(1, ft.timer / 0.3);
       renderer.drawText(ft.text, ft.x, ft.y, {
         size: ft.size || 22,
         color: ft.color,
@@ -825,27 +852,21 @@ class BattleScene extends Scene {
       const a = allies[i];
       const ry = panelY + 8 + i * rowH;
 
-      // Highlight current actor
       const isCurrent = (this.engine.currentUnit === a && (this.uiState === 'command' || this.uiState === 'skillSelect'));
       if (isCurrent) {
         renderer.drawRect(panelX + 2, ry - 1, panelW - 4, rowH - 2, '#FFD700', 0.15);
       }
 
-      // Name + Season icon
       const nameColor = a.alive ? '#FFF' : '#666';
       renderer.drawText(a.name, panelX + 12, ry + 2, { size: 13, color: nameColor });
-
-      // Season gauge (compact)
       renderer.drawSeasonGauge(panelX + 90, ry + 2, a.currentSeason);
 
-      // HP bar
       const barX = panelX + 240;
       const hpColor = (a.hp / a.maxHp) < 0.3 ? '#E74C3C' : '#2ECC71';
       renderer.drawText('HP', barX, ry + 2, { size: 11, color: '#AAA' });
       renderer.drawBar(barX + 22, ry + 4, 100, 10, a.hp, a.maxHp, hpColor);
       renderer.drawText(`${a.hp}/${a.maxHp}`, barX + 125, ry + 2, { size: 11, color: '#CCC' });
 
-      // MP bar
       const mpX = panelX + 400;
       renderer.drawText('MP', mpX, ry + 2, { size: 11, color: '#AAA' });
       renderer.drawBar(mpX + 22, ry + 4, 50, 10, a.mp, a.maxMp, '#3498DB');
@@ -922,7 +943,6 @@ class BattleScene extends Scene {
     const panelH = Math.max(116, skills.length * 28 + 20);
 
     renderer.drawRoundedRect(panelX, panelY, panelW, panelH, 8, 'rgba(0,0,0,0.85)', '#777');
-
     renderer.drawText('スキル選択 [ESC:戻る]', panelX + 10, panelY + 4, { size: 11, color: '#888' });
 
     for (let i = 0; i < skills.length; i++) {
@@ -934,35 +954,29 @@ class BattleScene extends Scene {
         renderer.drawRect(panelX + 4, iy - 2, panelW - 8, 26, 'rgba(255,215,0,0.2)');
       }
 
-      // Season color dot
       const sSeason = s.season || unit.currentSeason;
       const sColor = SEASON_COLORS[sSeason].primary;
       renderer.drawRect(panelX + 12, iy + 6, 12, 12, sColor);
 
-      // Skill name
       const canUse = unit.mp >= (s.mpCost || 0);
       renderer.drawText(s.name, panelX + 32, iy + 4, {
         size: 14, color: canUse ? (selected ? '#FFD700' : '#FFF') : '#666',
       });
 
-      // MP cost
       renderer.drawText(`MP:${s.mpCost || 0}`, panelX + 200, iy + 6, {
         size: 11, color: canUse ? '#88BBFF' : '#555',
       });
 
-      // Season label
       renderer.drawText(SEASON_NAMES[sSeason], panelX + 260, iy + 6, {
         size: 11, color: sColor,
       });
 
-      // Power
       if (s.power) {
         renderer.drawText(`威力:${s.power}`, panelX + 310, iy + 6, {
           size: 11, color: '#AAA',
         });
       }
 
-      // Type
       const typeLabel = s.type === 'heal' ? '回復' : s.type === 'magic' ? '魔法' : '物理';
       renderer.drawText(typeLabel, panelX + 380, iy + 6, {
         size: 11, color: '#999',

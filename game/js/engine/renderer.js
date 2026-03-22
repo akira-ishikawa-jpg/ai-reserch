@@ -57,6 +57,31 @@ class Renderer {
     }
   }
 
+  // Draw gradient rectangle (top to bottom)
+  drawGradientRect(x, y, w, h, colorTop, colorBottom) {
+    const ctx = this.ctx;
+    const grad = ctx.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, colorTop);
+    grad.addColorStop(1, colorBottom);
+    ctx.fillStyle = grad;
+    ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
+  }
+
+  // Draw glow effect (radial gradient)
+  drawGlow(x, y, radius, color, alpha = 0.5) {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0, color);
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // Draw text with shadow (pixel-art style)
   drawText(text, x, y, options = {}) {
     const {
@@ -67,12 +92,21 @@ class Renderer {
       shadowColor = '#000',
       font = null,
       maxWidth = null,
+      outline = false,
+      outlineColor = '#000',
+      outlineWidth = 3,
     } = options;
     const ctx = this.ctx;
     ctx.font = `${size}px ${font || "'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif"}`;
     ctx.textAlign = align;
     ctx.textBaseline = 'top';
-    if (shadow) {
+    if (outline) {
+      ctx.strokeStyle = outlineColor;
+      ctx.lineWidth = outlineWidth;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(text, x, y, maxWidth || undefined);
+    }
+    if (shadow && !outline) {
       ctx.fillStyle = shadowColor;
       ctx.fillText(text, x + 1, y + 1, maxWidth || undefined);
     }
@@ -80,30 +114,117 @@ class Renderer {
     ctx.fillText(text, x, y, maxWidth || undefined);
   }
 
-  // Draw a simple sprite (colored rectangle with features)
+  // Draw a simple sprite (colored rectangle with features) - kept for backward compat
   drawSprite(x, y, w, h, spriteData) {
     const ctx = this.ctx;
-    // Body
-    ctx.fillStyle = spriteData.bodyColor || '#888';
-    ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
-    // Head
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+
+    // Shadow under character
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(cx + w / 2, cy + h, w * 0.4, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Body (trapezoid)
+    const bodyColor = spriteData.bodyColor || '#888';
+    ctx.fillStyle = bodyColor;
+    ctx.beginPath();
+    ctx.moveTo(cx + w * 0.15, cy + h * 0.35);
+    ctx.lineTo(cx + w * 0.85, cy + h * 0.35);
+    ctx.lineTo(cx + w * 0.9, cy + h * 0.75);
+    ctx.lineTo(cx + w * 0.1, cy + h * 0.75);
+    ctx.closePath();
+    ctx.fill();
+
+    // Legs (two small rectangles)
+    ctx.fillStyle = bodyColor;
+    const legW = w * 0.18;
+    const legH = h * 0.25;
+    const frame = Math.floor(Date.now() / 200) % 2;
+    const legOffsetL = 0;
+    const legOffsetR = 0;
+    ctx.fillRect(cx + w * 0.25 + legOffsetL, cy + h * 0.72, legW, legH);
+    ctx.fillRect(cx + w * 0.57 + legOffsetR, cy + h * 0.72, legW, legH);
+
+    // Head (circle)
     if (spriteData.headColor) {
       ctx.fillStyle = spriteData.headColor;
-      ctx.fillRect(Math.floor(x + w * 0.2), Math.floor(y), Math.floor(w * 0.6), Math.floor(h * 0.35));
+      ctx.beginPath();
+      ctx.arc(cx + w / 2, cy + h * 0.22, w * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eyes (two white dots)
+      ctx.fillStyle = '#FFF';
+      ctx.fillRect(cx + w * 0.33, cy + h * 0.18, 2, 2);
+      ctx.fillRect(cx + w * 0.55, cy + h * 0.18, 2, 2);
+      // Pupils
+      ctx.fillStyle = '#222';
+      ctx.fillRect(cx + w * 0.35, cy + h * 0.19, 1, 1);
+      ctx.fillRect(cx + w * 0.57, cy + h * 0.19, 1, 1);
     }
-    // Season aura
+
+    // Season aura with glow effect
     if (spriteData.season) {
       const color = SEASON_COLORS[spriteData.season].primary;
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.globalAlpha = 0.5 + 0.3 * Math.sin(Date.now() / 500);
-      ctx.strokeRect(Math.floor(x) - 2, Math.floor(y) - 2, w + 4, h + 4);
-      ctx.globalAlpha = 1;
+      const pulse = 0.4 + 0.3 * Math.sin(Date.now() / 500);
+      this.drawGlow(cx + w / 2, cy + h / 2, w * 0.9, color, pulse);
+    }
+  }
+
+  // ==========================================
+  // Pixel Character Drawing System
+  // ==========================================
+
+  drawPixelChar(x, y, scale, type, options = {}) {
+    const { direction = 'down', frame = 0, season = null } = options;
+    const ctx = this.ctx;
+    const pixels = PIXEL_CHARS[type];
+    if (!pixels) return;
+
+    const pattern = pixels.patterns ? pixels.patterns[direction] || pixels.patterns['down'] : pixels.default;
+    const frameData = pattern[frame % pattern.length];
+    const palette = pixels.palette;
+
+    const px = Math.floor(x);
+    const py = Math.floor(y);
+
+    // Draw shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.beginPath();
+    ctx.ellipse(px + (frameData[0].length * scale) / 2, py + frameData.length * scale, frameData[0].length * scale * 0.35, 2 * scale, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw each pixel
+    for (let row = 0; row < frameData.length; row++) {
+      const line = frameData[row];
+      for (let col = 0; col < line.length; col++) {
+        const ch = line[col];
+        if (ch === '.' || ch === ' ') continue;
+        const color = palette[ch];
+        if (!color) continue;
+        ctx.fillStyle = color;
+        ctx.fillRect(px + col * scale, py + row * scale, scale, scale);
+      }
+    }
+
+    // Season glow overlay
+    if (season) {
+      const glowColor = SEASON_COLORS[season].primary;
+      const pulse = 0.2 + 0.15 * Math.sin(Date.now() / 500);
+      this.drawGlow(
+        px + (frameData[0].length * scale) / 2,
+        py + (frameData.length * scale) / 2,
+        frameData[0].length * scale * 0.7,
+        glowColor,
+        pulse
+      );
     }
   }
 
   // Seasonal particle system
   addParticle(season, x, y) {
+    if (this.particles.length >= 100) return; // cap at 100
     const colors = SEASON_COLORS[season];
     this.particles.push({
       x, y,
@@ -114,6 +235,9 @@ class Renderer {
       size: 2 + Math.random() * 3,
       color: Math.random() > 0.5 ? colors.primary : colors.accent,
       season,
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.1,
+      flickerPhase: Math.random() * Math.PI * 2,
     });
   }
 
@@ -123,19 +247,22 @@ class Renderer {
       p.x += p.vx;
       p.y += p.vy;
       p.life--;
+      p.rotation += p.rotSpeed;
 
       // Season-specific behavior
       if (p.season === SEASON.SPRING) {
         p.vx += Math.sin(Date.now() / 1000 + p.x) * 0.02;
+        p.vy += 0.015; // drift down gently
         p.vy *= 0.99;
       } else if (p.season === SEASON.SUMMER) {
         p.vy -= 0.01; // rise like heat
       } else if (p.season === SEASON.AUTUMN) {
         p.vy += 0.02; // fall like leaves
-        p.vx += Math.sin(Date.now() / 800 + p.y) * 0.03;
+        p.vx += Math.sin(Date.now() / 800 + p.y) * 0.04;
       } else if (p.season === SEASON.WINTER) {
         p.vx += Math.sin(Date.now() / 1200 + p.x) * 0.01;
-        p.vy += 0.01; // fall like snow
+        p.vy += 0.008; // fall like snow, gentle
+        p.vy = Math.min(p.vy, 0.5); // max fall speed
       }
 
       if (p.life <= 0) this.particles.splice(i, 1);
@@ -143,26 +270,86 @@ class Renderer {
   }
 
   drawParticles() {
+    const ctx = this.ctx;
     for (const p of this.particles) {
       const alpha = Math.min(1, p.life / 30);
-      this.ctx.globalAlpha = alpha;
-      this.ctx.fillStyle = p.color;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = p.color;
+
       if (p.season === SEASON.SPRING) {
-        // Cherry blossom petal shape
-        this.ctx.beginPath();
-        this.ctx.ellipse(p.x, p.y, p.size, p.size * 0.6, Date.now() / 500 + p.x, 0, Math.PI * 2);
-        this.ctx.fill();
+        // Cherry blossom petal — rotated ellipse with 5-petal hint
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.beginPath();
+        // Draw a petal shape
+        ctx.moveTo(0, -p.size * 0.5);
+        ctx.quadraticCurveTo(p.size * 0.6, -p.size * 0.3, p.size * 0.3, p.size * 0.4);
+        ctx.quadraticCurveTo(0, p.size * 0.2, -p.size * 0.3, p.size * 0.4);
+        ctx.quadraticCurveTo(-p.size * 0.6, -p.size * 0.3, 0, -p.size * 0.5);
+        ctx.fill();
+        ctx.restore();
+      } else if (p.season === SEASON.SUMMER) {
+        // Firefly — flickering glowing dot
+        const flicker = 0.4 + 0.6 * Math.abs(Math.sin(Date.now() / 150 + p.flickerPhase));
+        ctx.globalAlpha = alpha * flicker;
+        // Outer glow
+        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size * 2);
+        grad.addColorStop(0, p.color);
+        grad.addColorStop(0.4, p.color);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 2, 0, Math.PI * 2);
+        ctx.fill();
+        // Core bright point
+        ctx.fillStyle = '#FFFFCC';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.3, 0, Math.PI * 2);
+        ctx.fill();
       } else if (p.season === SEASON.AUTUMN) {
-        // Leaf shape
-        this.ctx.fillRect(p.x, p.y, p.size * 1.2, p.size * 0.8);
-      } else {
-        // Circle (snow, heat shimmer)
-        this.ctx.beginPath();
-        this.ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
-        this.ctx.fill();
+        // Leaf shape — swaying maple-like
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.beginPath();
+        // Simple leaf shape
+        ctx.moveTo(0, -p.size * 0.6);
+        ctx.lineTo(p.size * 0.5, 0);
+        ctx.lineTo(p.size * 0.2, p.size * 0.2);
+        ctx.lineTo(0, p.size * 0.6);
+        ctx.lineTo(-p.size * 0.2, p.size * 0.2);
+        ctx.lineTo(-p.size * 0.5, 0);
+        ctx.closePath();
+        ctx.fill();
+        // Leaf vein
+        ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+        ctx.lineWidth = 0.5;
+        ctx.beginPath();
+        ctx.moveTo(0, -p.size * 0.5);
+        ctx.lineTo(0, p.size * 0.5);
+        ctx.stroke();
+        ctx.restore();
+      } else if (p.season === SEASON.WINTER) {
+        // Snowflake — soft, fluffy with glow
+        ctx.globalAlpha = alpha * 0.8;
+        // Outer soft glow
+        const snowGrad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);
+        snowGrad.addColorStop(0, '#FFFFFF');
+        snowGrad.addColorStop(0.5, 'rgba(200,220,255,0.5)');
+        snowGrad.addColorStop(1, 'rgba(200,220,255,0)');
+        ctx.fillStyle = snowGrad;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+        // Core
+        ctx.fillStyle = '#FFF';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.3, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
-    this.ctx.globalAlpha = 1;
+    ctx.globalAlpha = 1;
   }
 
   // HP / MP / Season gauge bar
@@ -228,3 +415,393 @@ class Renderer {
     this.ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 }
+
+// ==========================================
+// Pixel Character Data
+// ==========================================
+const PIXEL_CHARS = {
+  hero: {
+    palette: {
+      'B': '#3355AA', // hair (blue)
+      'b': '#224488', // hair dark
+      'F': '#FFD699', // skin
+      'f': '#EEBB77', // skin shadow
+      'E': '#FFFFFF', // eye white
+      'e': '#222222', // pupil
+      'A': '#4488CC', // armor
+      'a': '#336699', // armor dark
+      'C': '#CC8844', // cape / accent
+      'L': '#554433', // legs / boots
+    },
+    patterns: {
+      down: [
+        [
+          '..bBBb..',
+          '.BBBBB b.',
+          '.FFEEFF.',
+          '.FFFFFF.',
+          '..FFFF..',
+          '.aAAAAa.',
+          '.AAAAAA.',
+          '..A..A..',
+          '..L..L..',
+        ],
+        [
+          '..bBBb..',
+          '.BBBBBb.',
+          '.FFEEFF.',
+          '.FFFFFF.',
+          '..FFFF..',
+          '.aAAAAa.',
+          '.AAAAAA.',
+          '.A....A.',
+          '.L....L.',
+        ],
+      ],
+      up: [
+        [
+          '..bBBb..',
+          '.BBBBBb.',
+          '.BBBBBB.',
+          '..BBBB..',
+          '..FFFF..',
+          '.aAAAAa.',
+          '.AAAAAA.',
+          '..A..A..',
+          '..L..L..',
+        ],
+        [
+          '..bBBb..',
+          '.BBBBBb.',
+          '.BBBBBB.',
+          '..BBBB..',
+          '..FFFF..',
+          '.aAAAAa.',
+          '.AAAAAA.',
+          '.A....A.',
+          '.L....L.',
+        ],
+      ],
+      left: [
+        [
+          '..bBBb..',
+          '.BBBBBb.',
+          '.eEFFF..',
+          '.FFFFF..',
+          '..FFFF..',
+          '.aAAAA..',
+          '.AAAAA..',
+          '..A.A...',
+          '..L.L...',
+        ],
+        [
+          '..bBBb..',
+          '.BBBBBb.',
+          '.eEFFF..',
+          '.FFFFF..',
+          '..FFFF..',
+          '.aAAAA..',
+          '.AAAAA..',
+          '.A...A..',
+          '.L...L..',
+        ],
+      ],
+      right: [
+        [
+          '..bBBb..',
+          '.bBBBBB.',
+          '..FFFEe.',
+          '..FFFFF.',
+          '..FFFF..',
+          '..AAAAa.',
+          '..AAAAA.',
+          '...A.A..',
+          '...L.L..',
+        ],
+        [
+          '..bBBb..',
+          '.bBBBBB.',
+          '..FFFEe.',
+          '..FFFFF.',
+          '..FFFF..',
+          '..AAAAa.',
+          '..AAAAA.',
+          '..A...A.',
+          '..L...L.',
+        ],
+      ],
+    },
+  },
+
+  healer: {
+    palette: {
+      'H': '#88CC88', // hair (green)
+      'h': '#669966', // hair dark
+      'F': '#FFE0BD', // skin
+      'E': '#FFFFFF', // eye white
+      'e': '#336633', // pupil (green)
+      'R': '#EEEEEE', // robe white
+      'r': '#CCCCCC', // robe shadow
+      'G': '#66BB66', // green accent
+      'L': '#998877', // boots
+    },
+    patterns: {
+      down: [
+        [
+          '..hHHh..',
+          '.HHHHHH.',
+          '.FFEEFF.',
+          '.FFFFFF.',
+          '..FFFF..',
+          '.rRGGRr.',
+          '.RRGGRR.',
+          '..RRRR..',
+          '..L..L..',
+        ],
+        [
+          '..hHHh..',
+          '.HHHHHH.',
+          '.FFEEFF.',
+          '.FFFFFF.',
+          '..FFFF..',
+          '.rRGGRr.',
+          '.RRGGRR.',
+          '.RR..RR.',
+          '.L....L.',
+        ],
+      ],
+    },
+  },
+
+  npc_brown: {
+    palette: {
+      'H': '#8B4513', // hair
+      'h': '#6B3310', // hair dark
+      'F': '#DEB887', // skin
+      'E': '#FFFFFF', // eye
+      'e': '#333333', // pupil
+      'C': '#8B4513', // clothes
+      'c': '#6B3310', // clothes dark
+      'L': '#554433', // legs
+    },
+    patterns: {
+      down: [
+        [
+          '..hHHh..',
+          '.HHHHHH.',
+          '.FFEEFF.',
+          '.FFFFFF.',
+          '..FFFF..',
+          '.cCCCCc.',
+          '.CCCCCC.',
+          '..C..C..',
+          '..L..L..',
+        ],
+      ],
+    },
+  },
+
+  npc_green: {
+    palette: {
+      'H': '#2E8B57', // hair
+      'h': '#1E6B37', // hair dark
+      'F': '#98FB98', // skin (pale green)
+      'E': '#FFFFFF',
+      'e': '#333333',
+      'C': '#2E8B57',
+      'c': '#1E6B37',
+      'L': '#445544',
+    },
+    patterns: {
+      down: [
+        [
+          '..hHHh..',
+          '.HHHHHH.',
+          '.FFEEFF.',
+          '.FFFFFF.',
+          '..FFFF..',
+          '.cCCCCc.',
+          '.CCCCCC.',
+          '..C..C..',
+          '..L..L..',
+        ],
+      ],
+    },
+  },
+
+  npc_innkeeper: {
+    palette: {
+      'H': '#654321', // hair
+      'h': '#453111', // hair dark
+      'F': '#F5DEB3', // skin
+      'E': '#FFFFFF',
+      'e': '#333333',
+      'C': '#654321',
+      'c': '#453111',
+      'P': '#FFFFFF', // apron
+      'L': '#443322',
+    },
+    patterns: {
+      down: [
+        [
+          '..hHHh..',
+          '.HHHHHH.',
+          '.FFEEFF.',
+          '.FFFFFF.',
+          '..FFFF..',
+          '.cCPPCc.',
+          '.CCPPCC.',
+          '..C..C..',
+          '..L..L..',
+        ],
+      ],
+    },
+  },
+
+  // --- Enemy types ---
+  fairy: {
+    palette: {
+      'W': '#EEDDFF', // wing
+      'w': '#CCAAEE', // wing dark
+      'B': '#DDBBFF', // body
+      'b': '#BB99DD', // body shadow
+      'E': '#FFFFFF',
+      'e': '#6633AA',
+      'G': '#FFDD44', // glow
+      'S': '#FFAACC', // sparkle
+    },
+    patterns: {
+      down: [
+        [
+          'W..BB..W',
+          'WW.BB.WW',
+          'wWBBBBWw',
+          '.WBEEBW.',
+          '..BBBB..',
+          '.wBBBBw.',
+          '..bBBb..',
+          '...bb...',
+        ],
+        [
+          'w..BB..w',
+          'wW.BB.Ww',
+          '.WBBBBW.',
+          'WWBEEBWW',
+          '..BBBB..',
+          '.wBBBBw.',
+          '..bBBb..',
+          '...bb...',
+        ],
+      ],
+    },
+  },
+
+  bee: {
+    palette: {
+      'Y': '#FFD700', // yellow stripe
+      'K': '#222222', // black stripe
+      'W': '#CCDDEE', // wing (translucent)
+      'w': '#AABBCC', // wing shadow
+      'E': '#FF0000', // eye
+      'S': '#FFFFFF', // stinger highlight
+    },
+    patterns: {
+      down: [
+        [
+          'W..KK..W',
+          'WW.YY.WW',
+          '.WKKKKW.',
+          '.WYYYYW.',
+          '..KKKK..',
+          '..YYYY..',
+          '..KKKK..',
+          '...SS...',
+        ],
+        [
+          'w..KK..w',
+          'wW.YY.Ww',
+          '.WKKKKW.',
+          '.WYYYYW.',
+          '..KKKK..',
+          '..YYYY..',
+          '..KKKK..',
+          '...SS...',
+        ],
+      ],
+    },
+  },
+
+  fox: {
+    palette: {
+      'O': '#FF8844', // orange fur
+      'o': '#CC6622', // dark fur
+      'W': '#FFFFFF', // white
+      'E': '#FFDD00', // eyes (golden)
+      'e': '#222222', // pupils
+      'N': '#222222', // nose
+      'T': '#FF6622', // tail
+      't': '#CC4400', // tail dark
+    },
+    patterns: {
+      down: [
+        [
+          't......t',
+          'OO.OO.OO',
+          'OOOOOOOO',
+          'OOeWWeOO',
+          '.OONNOO.',
+          '.OWWWWO.',
+          '..OOOO..',
+          '.OO..OO.',
+          '.oo..oo.',
+        ],
+      ],
+    },
+  },
+
+  boss_flower: {
+    palette: {
+      'P': '#FFB7C5', // petal pink
+      'p': '#FF88AA', // petal dark
+      'G': '#228B22', // green stem
+      'g': '#115511', // green dark
+      'Y': '#FFD700', // center (yellow)
+      'y': '#CCAA00', // center dark
+      'E': '#FF0000', // evil eyes
+      'V': '#664488', // vine/thorn
+      'T': '#884466', // thorn
+    },
+    patterns: {
+      down: [
+        [
+          '..pPPPp....',
+          '.PPpPpPP...',
+          'PPPPYPPPP..',
+          'pPPYYYPPp..',
+          '.PPEYEPP...',
+          '..PPPPP.V..',
+          '...GGG..V..',
+          '..gGGGg.V..',
+          '.gGGGGGgV..',
+          '..gGGGgVV..',
+          '...GGG.....',
+          'VVVgggVVVVV',
+        ],
+        [
+          '..pPPPp....',
+          '.PpPPpPP...',
+          'PPPPYPPPP..',
+          'pPPYYYPPp..',
+          '.PPEYEPP...',
+          '..PPPPP..V.',
+          '...GGG...V.',
+          '..gGGGg..V.',
+          '.gGGGGGg.V.',
+          '..gGGGg.VV.',
+          '...GGG.....',
+          'VVVgggVVVVV',
+        ],
+      ],
+    },
+  },
+};
