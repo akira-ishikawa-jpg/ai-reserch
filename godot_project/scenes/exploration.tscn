@@ -1,0 +1,54 @@
+[gd_scene load_steps=6 format=3 uid="uid://explore001"]
+
+[ext_resource type="Script" path="res://scripts/exploration/exploration.gd" id="1_explore"]
+[ext_resource type="Script" path="res://scripts/exploration/camera.gd" id="2_camera"]
+[ext_resource type="Script" path="res://scripts/exploration/player.gd" id="3_player"]
+[ext_resource type="Environment" path="res://resources/environment.tres" id="4_env"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_001"]
+size = Vector2(20, 20)
+
+[node name="Exploration" type="Node3D"]
+script = ExtResource("1_explore")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = ExtResource("4_env")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 10, 8)
+projection = 1
+size = 8.0
+script = ExtResource("2_camera")
+offset = Vector3(0, 10, 8)
+smooth_speed = 5.0
+ortho_size = 8.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, 0.353553, -0.612372, 0, 0.866025, 0.5, 0.707107, -0.353553, 0.612372, 0, 10, 0)
+light_color = Color(1, 0.98, 0.92, 1)
+light_energy = 1.2
+shadow_enabled = true
+directional_shadow_mode = 1
+
+[node name="Ground" type="Node3D" parent="."]
+
+[node name="GroundPlane" type="MeshInstance3D" parent="Ground"]
+mesh = SubResource("PlaneMesh_001")
+
+[node name="Characters" type="Node3D" parent="."]
+
+[node name="Player" type="Node3D" parent="Characters"]
+script = ExtResource("3_player")
+
+[node name="PlayerSprite" type="Sprite3D" parent="Characters/Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, 0)
+pixel_size = 0.02
+billboard = 1
+texture_filter = 0
+
+[node name="OmniLight3D" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 3, 2)
+light_color = Color(1, 0.85, 0.6, 1)
+light_energy = 0.8
+omni_range = 6.0
+omni_attenuation = 1.5

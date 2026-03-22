@@ -1,0 +1,31 @@
+[gd_scene load_steps=3 format=3 uid="uid://battle001"]
+
+[ext_resource type="Script" path="res://scripts/battle/battle.gd" id="1_battle"]
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_001"]
+size = Vector2(12, 8)
+
+[node name="Battle" type="Node3D"]
+script = ExtResource("1_battle")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 5, 6)
+projection = 1
+size = 6.0
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.707107, 0.353553, -0.612372, 0, 0.866025, 0.5, 0.707107, -0.353553, 0.612372, 0, 8, 0)
+light_color = Color(1, 0.98, 0.92, 1)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="BattleField" type="Node3D" parent="."]
+
+[node name="Ground" type="MeshInstance3D" parent="BattleField"]
+mesh = SubResource("PlaneMesh_001")
+
+[node name="PartyPositions" type="Node3D" parent="."]
+
+[node name="EnemyPositions" type="Node3D" parent="."]
+
+[node name="UI" type="CanvasLayer" parent="."]

@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>HD-2D Asset Generator - 四季廻りの職人</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e; color: #e0d8c8; font-family: 'Segoe UI', sans-serif;
+  padding: 20px; line-height: 1.6;
+}
+h1 { color: #f8c8dc; text-align: center; margin-bottom: 8px; font-size: 28px; }
+.subtitle { text-align: center; color: #a89880; margin-bottom: 24px; font-size: 14px; }
+h2 { color: #c8b8a0; margin: 24px 0 12px; border-bottom: 1px solid #333; padding-bottom: 4px; }
+h3 { color: #a89880; margin: 12px 0 8px; font-size: 14px; }
+.controls {
+  text-align: center; margin: 16px 0; display: flex; gap: 12px;
+  justify-content: center; flex-wrap: wrap;
+}
+button {
+  background: #4a3f5c; color: #e0d8c8; border: 1px solid #6a5f7c;
+  padding: 10px 24px; cursor: pointer; font-size: 14px; border-radius: 4px;
+  transition: background 0.2s;
+}
+button:hover { background: #5a4f6c; }
+button.primary { background: #7c4a6a; border-color: #9c6a8a; }
+button.primary:hover { background: #8c5a7a; }
+.progress { text-align: center; color: #a89880; margin: 8px 0; font-size: 13px; }
+.canvas-grid {
+  display: flex; flex-wrap: wrap; gap: 16px; margin: 12px 0;
+}
+.canvas-item {
+  background: #12121e; border: 1px solid #333; border-radius: 4px;
+  padding: 8px; display: inline-block;
+}
+.canvas-item label {
+  display: block; font-size: 11px; color: #888; margin-bottom: 4px;
+}
+canvas { image-rendering: pixelated; display: block; }
+.preview-large canvas { image-rendering: pixelated; }
+.download-link {
+  display: inline-block; margin: 4px 0; font-size: 11px;
+  color: #8ab4f8; cursor: pointer; text-decoration: underline;
+}
+#log {
+  background: #0a0a14; border: 1px solid #333; padding: 10px;
+  margin-top: 16px; max-height: 200px; overflow-y: auto;
+  font-family: monospace; font-size: 11px; color: #6a8a6a;
+}
+</style>
+</head>
+<body>
+
+<h1>HD-2D Asset Generator</h1>
+<p class="subtitle">四季廻りの職人 - 春・花煙国アセット生成ツール</p>
+
+<div class="controls">
+  <button class="primary" onclick="generateAll()">全アセット生成</button>
+  <button onclick="generateCharacters()">キャラクターのみ</button>
+  <button onclick="generateTiles()">タイルセットのみ</button>
+  <button onclick="generateBuildings()">建物のみ</button>
+  <button onclick="generateEnemies()">敵のみ</button>
+  <button onclick="generateDecorations()">装飾のみ</button>
+  <button onclick="downloadAllZip()">全てダウンロード (ZIP)</button>
+</div>
+<div class="progress" id="progress"></div>
+
+<h2>キャラクター スプライトシート</h2>
+<div class="canvas-grid" id="characters-section">
+  <div class="canvas-item">
+    <label>主人公 (Hero) - 96x192 @4x</label>
+    <canvas id="hero-preview" width="384" height="768"></canvas>
+    <span class="download-link" onclick="downloadCanvas('hero-preview','hero_spritesheet.png',1)">PNG (原寸)</span>
+  </div>
+  <div class="canvas-item">
+    <label>紬 (Healer) - 96x192 @4x</label>
+    <canvas id="healer-preview" width="384" height="768"></canvas>
+    <span class="download-link" onclick="downloadCanvas('healer-preview','healer_spritesheet.png',1)">PNG (原寸)</span>
+  </div>
+</div>
+
+<h2>タイルセット</h2>
+<div class="canvas-grid" id="tiles-section">
+  <div class="canvas-item">
+    <label>石畳タイル (256x128) @4x</label>
+    <canvas id="tiles-cobble" width="1024" height="512"></canvas>
+    <span class="download-link" onclick="downloadCanvas('tiles-cobble','tiles_cobblestone.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>壁タイル (192x64) @4x</label>
+    <canvas id="tiles-wall" width="768" height="256"></canvas>
+    <span class="download-link" onclick="downloadCanvas('tiles-wall','tiles_wall.png',1)">PNG</span>
+  </div>
+</div>
+
+<h2>建物パーツ</h2>
+<div class="canvas-grid" id="buildings-section">
+  <div class="canvas-item">
+    <label>小さな家 128x96 @3x</label>
+    <canvas id="building-house" width="384" height="288"></canvas>
+    <span class="download-link" onclick="downloadCanvas('building-house','building_house.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>宿屋 128x128 @3x</label>
+    <canvas id="building-inn" width="384" height="384"></canvas>
+    <span class="download-link" onclick="downloadCanvas('building-inn','building_inn.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>商店 96x96 @3x</label>
+    <canvas id="building-shop" width="288" height="288"></canvas>
+    <span class="download-link" onclick="downloadCanvas('building-shop','building_shop.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>薬師ギルド 128x128 @3x</label>
+    <canvas id="building-guild" width="384" height="384"></canvas>
+    <span class="download-link" onclick="downloadCanvas('building-guild','building_guild.png',1)">PNG</span>
+  </div>
+</div>
+
+<h2>敵スプライト</h2>
+<div class="canvas-grid" id="enemies-section">
+  <div class="canvas-item">
+    <label>花精 64x64x2f @3x</label>
+    <canvas id="enemy-fairy" width="384" height="192"></canvas>
+    <span class="download-link" onclick="downloadCanvas('enemy-fairy','enemy_fairy.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>花蜂 64x64x2f @3x</label>
+    <canvas id="enemy-bee" width="384" height="192"></canvas>
+    <span class="download-link" onclick="downloadCanvas('enemy-bee','enemy_bee.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>霧狐 64x64x2f @3x</label>
+    <canvas id="enemy-fox" width="384" height="192"></canvas>
+    <span class="download-link" onclick="downloadCanvas('enemy-fox','enemy_fox.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>花守(Boss) 128x128x2f @2x</label>
+    <canvas id="enemy-boss" width="512" height="256"></canvas>
+    <span class="download-link" onclick="downloadCanvas('enemy-boss','enemy_boss.png',1)">PNG</span>
+  </div>
+</div>
+
+<h2>装飾オブジェクト</h2>
+<div class="canvas-grid" id="decorations-section">
+  <div class="canvas-item">
+    <label>噴水 64x64 @3x</label>
+    <canvas id="deco-fountain" width="192" height="192"></canvas>
+    <span class="download-link" onclick="downloadCanvas('deco-fountain','deco_fountain.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>花壇 32x32 @4x</label>
+    <canvas id="deco-flowerbed" width="128" height="128"></canvas>
+    <span class="download-link" onclick="downloadCanvas('deco-flowerbed','deco_flowerbed.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>街灯 16x48 @4x</label>
+    <canvas id="deco-lamp" width="64" height="192"></canvas>
+    <span class="download-link" onclick="downloadCanvas('deco-lamp','deco_streetlamp.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>桜の木 64x96 @3x</label>
+    <canvas id="deco-sakura" width="192" height="288"></canvas>
+    <span class="download-link" onclick="downloadCanvas('deco-sakura','deco_sakura_tree.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>樽 16x16 @4x</label>
+    <canvas id="deco-barrel" width="64" height="64"></canvas>
+    <span class="download-link" onclick="downloadCanvas('deco-barrel','deco_barrel.png',1)">PNG</span>
+  </div>
+  <div class="canvas-item">
+    <label>木箱 16x16 @4x</label>
+    <canvas id="deco-crate" width="64" height="64"></canvas>
+    <span class="download-link" onclick="downloadCanvas('deco-crate','deco_crate.png',1)">PNG</span>
+  </div>
+</div>
+
+<div id="log"></div>
+
+<script>
+// ============================================================
+// GLOBAL CONFIG
+// ============================================================
+const LIGHT_ANGLE = 315; // degrees, top-left
+const LIGHT_DX = -1;
+const LIGHT_DY = -1;
+
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function setProgress(msg) {
+  document.getElementById('progress').textContent = msg;
+}
+
+// ============================================================
+// COLOR UTILITIES
+// ============================================================
+function rgb(r,g,b) { return `rgb(${r},${g},${b})`; }
+function rgba(r,g,b,a) { return `rgba(${r},${g},${b},${a})`; }
+
+function lighten(color, amt) {
+  const c = parseColor(color);
+  return rgb(
+    Math.min(255, c.r + amt),
+    Math.min(255, c.g + amt),
+    Math.min(255, c.b + amt)
+  );
+}
+function darken(color, amt) {
+  const c = parseColor(color);
+  return rgb(
+    Math.max(0, c.r - amt),
+    Math.max(0, c.g - amt),
+    Math.max(0, c.b - amt)
+  );
+}
+function parseColor(str) {
+  if (str.startsWith('#')) {
+    const hex = str.slice(1);
+    return {
+      r: parseInt(hex.substr(0,2),16),
+      g: parseInt(hex.substr(2,2),16),
+      b: parseInt(hex.substr(4,2),16)
+    };
+  }
+  const m = str.match(/(\d+)/g);
+  return { r: +m[0], g: +m[1], b: +m[2] };
+}
+
+function colorVariation(baseColor, range) {
+  const c = parseColor(baseColor);
+  const v = () => Math.floor(Math.random() * range * 2) - range;
+  return rgb(
+    Math.max(0, Math.min(255, c.r + v())),
+    Math.max(0, Math.min(255, c.g + v())),
+    Math.max(0, Math.min(255, c.b + v()))
+  );
+}
+
+// Palette helpers
+function makePalette(base, highlightAmt, shadowAmt) {
+  return {
+    highlight: lighten(base, highlightAmt || 30),
+    base: base,
+    shadow: darken(base, shadowAmt || 30),
+    outline: darken(base, 60)
+  };
+}
+
+// ============================================================
+// DRAWING PRIMITIVES (pixel-perfect)
+// ============================================================
+function px(ctx, x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 1, 1);
+}
+
+function fillRect(ctx, x, y, w, h, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, w, h);
+}
+
+function drawEllipse(ctx, cx, cy, rx, ry, color) {
+  ctx.fillStyle = color;
+  for (let dy = -ry; dy <= ry; dy++) {
+    for (let dx = -rx; dx <= rx; dx++) {
+      if ((dx*dx)/(rx*rx) + (dy*dy)/(ry*ry) <= 1) {
+        ctx.fillRect(cx+dx, cy+dy, 1, 1);
+      }
+    }
+  }
+}
+
+function drawCircle(ctx, cx, cy, r, color) {
+  drawEllipse(ctx, cx, cy, r, r, color);
+}
+
+function drawLine(ctx, x0, y0, x1, y1, color) {
+  ctx.fillStyle = color;
+  const dx = Math.abs(x1 - x0), dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  while (true) {
+    ctx.fillRect(x0, y0, 1, 1);
+    if (x0 === x1 && y0 === y1) break;
+    const e2 = 2 * err;
+    if (e2 > -dy) { err -= dy; x0 += sx; }
+    if (e2 < dx) { err += dx; y0 += sy; }
+  }
+}
+
+// Add shading: highlight top-left, shadow bottom-right
+function shadedRect(ctx, x, y, w, h, pal) {
+  fillRect(ctx, x, y, w, h, pal.base);
+  // highlight top and left edge
+  fillRect(ctx, x, y, w, 1, pal.highlight);
+  fillRect(ctx, x, y, 1, h, pal.highlight);
+  // shadow bottom and right edge
+  fillRect(ctx, x, y+h-1, w, 1, pal.shadow);
+  fillRect(ctx, x+w-1, y, 1, h, pal.shadow);
+}
+
+// ============================================================
+// PALETTES (OT-inspired muted tones)
+// ============================================================
+const PAL = {
+  // Character: Hero
+  heroSkin: { highlight: '#f5dcc0', base: '#e8c8a0', shadow: '#c8a078', outline: '#7a5a3a' },
+  heroHair: { highlight: '#ffe880', base: '#e8c840', shadow: '#b89830', outline: '#786020' },
+  heroArmor: { highlight: '#6888c8', base: '#4868a8', shadow: '#304880', outline: '#203060' },
+  heroMantle: { highlight: '#c84848', base: '#a03030', shadow: '#782020', outline: '#501818' },
+  heroBoot: { highlight: '#987060', base: '#705040', shadow: '#503828', outline: '#302018' },
+  heroBelt: { highlight: '#b89860', base: '#987840', shadow: '#706030', outline: '#484020' },
+
+  // Character: Healer
+  healerSkin: { highlight: '#f8e0c8', base: '#e8c8a8', shadow: '#c8a080', outline: '#7a5a3a' },
+  healerHair: { highlight: '#60d880', base: '#40b860', shadow: '#288840', outline: '#186028' },
+  healerRobe: { highlight: '#f0f0e8', base: '#d8d8c8', shadow: '#b0b098', outline: '#787868' },
+  healerAccent: { highlight: '#60c878', base: '#40a858', shadow: '#288040', outline: '#186028' },
+  healerVial: { highlight: '#88e8f8', base: '#58c8d8', shadow: '#3898a8', outline: '#206878' },
+
+  // Tiles
+  cobble: { highlight: '#a09888', base: '#8B8477', shadow: '#6a6258', outline: '#4a4438' },
+  cobbleGreen: { highlight: '#90a080', base: '#78886a', shadow: '#586848', outline: '#384828' },
+  wall: { highlight: '#b0a898', base: '#989080', shadow: '#787068', outline: '#585048' },
+  brick: { highlight: '#c88868', base: '#a86848', shadow: '#884830', outline: '#603020' },
+  wood: { highlight: '#c8a878', base: '#a88858', shadow: '#886840', outline: '#604828' },
+  roof: { highlight: '#b07060', base: '#904840', shadow: '#703028', outline: '#501818' },
+  roofThatch: { highlight: '#c8b878', base: '#a89858', shadow: '#887840', outline: '#605028' },
+
+  // Buildings
+  window: { highlight: '#88b8d8', base: '#5888a8', shadow: '#386878', outline: '#284858' },
+  door: { highlight: '#b08860', base: '#886840', shadow: '#685028', outline: '#483818' },
+
+  // Nature
+  grass: { highlight: '#88c868', base: '#68a848', shadow: '#488830', outline: '#306820' },
+  flower_pink: { highlight: '#f8a8c0', base: '#e88098', shadow: '#c86078', outline: '#a04058' },
+  flower_white: { highlight: '#ffffff', base: '#e8e0d8', shadow: '#c8c0b0', outline: '#a09888' },
+  trunk: { highlight: '#987858', base: '#786040', shadow: '#584828', outline: '#383018' },
+  sakura: { highlight: '#f8c8d8', base: '#f0a0b8', shadow: '#d87898', outline: '#b85878' },
+  leaf: { highlight: '#78c858', base: '#58a838', shadow: '#408820', outline: '#286810' },
+
+  // Enemies
+  fairyPink: { highlight: '#ffc8e0', base: '#f8a0c0', shadow: '#d87898', outline: '#b85070' },
+  fairyWing: { highlight: '#f8e8ff', base: '#e0c8f0', shadow: '#c0a0d8', outline: '#9878b0' },
+  beeYellow: { highlight: '#f8e848', base: '#e0c830', shadow: '#b8a020', outline: '#887818' },
+  beeBlack: { highlight: '#484848', base: '#282828', shadow: '#181818', outline: '#080808' },
+  beeWing: { highlight: '#e8f0ff', base: '#c8d8f0', shadow: '#a8b8d8', outline: '#8898b8' },
+  foxOrange: { highlight: '#f8b868', base: '#e09040', shadow: '#b87028', outline: '#885018' },
+  foxWhite: { highlight: '#ffffff', base: '#f0e8e0', shadow: '#d0c8b8', outline: '#a89888' },
+  bossGreen: { highlight: '#88e8a8', base: '#58c878', shadow: '#38a858', outline: '#208838' },
+  bossPetal: { highlight: '#f8c0d0', base: '#f098b0', shadow: '#d07090', outline: '#a85070' },
+
+  // Decorations
+  stone: { highlight: '#b0a898', base: '#908880', shadow: '#706860', outline: '#504840' },
+  water: { highlight: '#88c8e8', base: '#58a0c8', shadow: '#3878a0', outline: '#285878' },
+  metal: { highlight: '#c0c8d0', base: '#90989c', shadow: '#687078', outline: '#484c50' },
+  metalGold: { highlight: '#f8e060', base: '#d8b830', shadow: '#b09020', outline: '#886818' },
+};
+
+// ============================================================
+// SCALED CANVAS SETUP
+// ============================================================
+function getScaledCtx(canvasId, nativeW, nativeH) {
+  const canvas = document.getElementById(canvasId);
+  const scaleX = canvas.width / nativeW;
+  const scaleY = canvas.height / nativeH;
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.setTransform(scaleX, 0, 0, scaleY, 0, 0);
+  ctx.clearRect(0, 0, nativeW, nativeH);
+  return ctx;
+}
+
+// ============================================================
+// CHARACTER: HERO
+// ============================================================
+function drawHeroFrame(ctx, ox, oy, dir, frame) {
+  // dir: 0=down, 1=left, 2=right, 3=up
+  // frame: 0=stand, 1=walk_left, 2=walk_right
+  const W = 32, H = 48;
+  const walkOffset = frame === 0 ? 0 : (frame === 1 ? -1 : 1);
+  const bobY = frame === 0 ? 0 : -1;
+  const p = PAL;
+
+  // Shadow on ground
+  drawEllipse(ctx, ox+16, oy+46, 8, 2, rgba(0,0,0,0.3));
+
+  // --- FEET ---
+  const footY = oy + 40;
+  const leftFootX = ox + 9 + (frame === 1 ? -2 : frame === 2 ? 1 : 0);
+  const rightFootX = ox + 18 + (frame === 1 ? -1 : frame === 2 ? 2 : 0);
+  const leftFootY = footY + (frame === 1 ? -1 : 0);
+  const rightFootY = footY + (frame === 2 ? -1 : 0);
+
+  // Boots
+  shadedRect(ctx, leftFootX, leftFootY, 6, 5, p.heroBoot);
+  shadedRect(ctx, rightFootX, rightFootY, 6, 5, p.heroBoot);
+  // Boot soles
+  fillRect(ctx, leftFootX, leftFootY+4, 6, 1, p.heroBoot.outline);
+  fillRect(ctx, rightFootX, rightFootY+4, 6, 1, p.heroBoot.outline);
+
+  // --- LEGS ---
+  const legY = oy + 32 + bobY;
+  fillRect(ctx, ox+10, legY, 5, 8, p.heroArmor.shadow);
+  fillRect(ctx, ox+18, legY, 5, 8, p.heroArmor.shadow);
+  // Knee highlight
+  fillRect(ctx, ox+10, legY, 5, 1, p.heroArmor.base);
+  fillRect(ctx, ox+18, legY, 5, 1, p.heroArmor.base);
+
+  // --- MANTLE (back, behind body) ---
+  if (dir === 0 || dir === 1 || dir === 2) {
+    // Cape flows behind/side
+    const capeX = dir === 1 ? ox + 22 : dir === 2 ? ox + 2 : ox + 6;
+    const capeW = dir === 0 ? 20 : 10;
+    for (let cy = 0; cy < 18; cy++) {
+      const wave = Math.sin((cy + frame) * 0.5) * (dir === 0 ? 1 : 0.5);
+      const cw = capeW + (cy > 12 ? 2 : 0);
+      const cx2 = dir === 0 ? capeX - (cy > 12 ? 1 : 0) : capeX;
+      fillRect(ctx, Math.round(cx2 + wave), oy + 18 + cy + bobY, cw, 1,
+        cy < 3 ? p.heroMantle.highlight : cy < 12 ? p.heroMantle.base : p.heroMantle.shadow);
+    }
+    // Cape outline bottom
+    fillRect(ctx, dir === 0 ? ox+5 : capeX, oy+36+bobY, dir === 0 ? 22 : 11, 1, p.heroMantle.outline);
+  }
+
+  // --- BODY (torso) ---
+  const bodyY = oy + 16 + bobY;
+  // Main torso
+  shadedRect(ctx, ox+8, bodyY, 16, 16, p.heroArmor);
+  // Chest plate detail
+  fillRect(ctx, ox+11, bodyY+2, 10, 8, p.heroArmor.highlight);
+  fillRect(ctx, ox+12, bodyY+3, 8, 6, p.heroArmor.base);
+  // Chest line
+  fillRect(ctx, ox+16, bodyY+3, 1, 6, p.heroArmor.shadow);
+  // Belt
+  shadedRect(ctx, ox+8, bodyY+12, 16, 3, p.heroBelt);
+  // Belt buckle
+  fillRect(ctx, ox+15, bodyY+12, 3, 3, p.heroBelt.highlight);
+  px(ctx, ox+16, bodyY+13, '#f8e060');
+
+  // Shoulder pads
+  shadedRect(ctx, ox+5, bodyY, 5, 5, p.heroArmor);
+  shadedRect(ctx, ox+22, bodyY, 5, 5, p.heroArmor);
+  // Shoulder highlight
+  px(ctx, ox+6, bodyY+1, p.heroArmor.highlight);
+  px(ctx, ox+23, bodyY+1, p.heroArmor.highlight);
+
+  // --- ARMS ---
+  const armSwing = frame === 1 ? 2 : frame === 2 ? -2 : 0;
+  // Left arm
+  fillRect(ctx, ox+5, bodyY+5, 3, 10 + (armSwing > 0 ? 1 : 0), p.heroArmor.shadow);
+  fillRect(ctx, ox+5, bodyY+5, 3, 1, p.heroArmor.base);
+  // Left hand
+  fillRect(ctx, ox+5, bodyY+14+Math.max(0,armSwing), 3, 3, p.heroSkin.base);
+  // Right arm
+  fillRect(ctx, ox+24, bodyY+5, 3, 10 + (-armSwing > 0 ? 1 : 0), p.heroArmor.shadow);
+  fillRect(ctx, ox+24, bodyY+5, 3, 1, p.heroArmor.base);
+  // Right hand
+  fillRect(ctx, ox+24, bodyY+14+Math.max(0,-armSwing), 3, 3, p.heroSkin.base);
+
+  // --- HEAD ---
+  const headY = oy + 4 + bobY;
+
+  if (dir === 3) {
+    // Back of head - hair only
+    shadedRect(ctx, ox+9, headY, 14, 13, p.heroHair);
+    // Hair detail
+    for (let i = 0; i < 4; i++) {
+      fillRect(ctx, ox+10+i*3, headY, 2, 2, p.heroHair.highlight);
+    }
+    // Neck
+    fillRect(ctx, ox+13, headY+12, 6, 3, p.heroSkin.shadow);
+  } else {
+    // Hair back
+    fillRect(ctx, ox+9, headY, 14, 5, p.heroHair.base);
+    fillRect(ctx, ox+9, headY, 14, 2, p.heroHair.highlight);
+    // Hair spikes
+    fillRect(ctx, ox+8, headY-1, 3, 3, p.heroHair.highlight);
+    fillRect(ctx, ox+13, headY-2, 3, 3, p.heroHair.highlight);
+    fillRect(ctx, ox+19, headY-1, 3, 3, p.heroHair.base);
+    fillRect(ctx, ox+22, headY, 2, 2, p.heroHair.shadow);
+
+    // Face
+    shadedRect(ctx, ox+10, headY+4, 12, 9, p.heroSkin);
+    // Ear
+    if (dir === 1) {
+      fillRect(ctx, ox+9, headY+6, 2, 3, p.heroSkin.base);
+    } else if (dir === 2) {
+      fillRect(ctx, ox+21, headY+6, 2, 3, p.heroSkin.base);
+    }
+
+    // Eyes
+    if (dir === 0) {
+      // Forward facing
+      px(ctx, ox+13, headY+7, '#2040a0');
+      px(ctx, ox+14, headY+7, '#2040a0');
+      px(ctx, ox+18, headY+7, '#2040a0');
+      px(ctx, ox+19, headY+7, '#2040a0');
+      // Eye highlight
+      px(ctx, ox+13, headY+6, '#88b8e8');
+      px(ctx, ox+18, headY+6, '#88b8e8');
+      // Mouth
+      px(ctx, ox+15, headY+10, p.heroSkin.shadow);
+      px(ctx, ox+16, headY+10, p.heroSkin.shadow);
+    } else if (dir === 1) {
+      // Left facing
+      px(ctx, ox+12, headY+7, '#2040a0');
+      px(ctx, ox+13, headY+7, '#2040a0');
+      px(ctx, ox+12, headY+6, '#88b8e8');
+      px(ctx, ox+13, headY+10, p.heroSkin.shadow);
+    } else if (dir === 2) {
+      // Right facing
+      px(ctx, ox+19, headY+7, '#2040a0');
+      px(ctx, ox+20, headY+7, '#2040a0');
+      px(ctx, ox+20, headY+6, '#88b8e8');
+      px(ctx, ox+18, headY+10, p.heroSkin.shadow);
+    }
+    // Neck
+    fillRect(ctx, ox+13, headY+12, 6, 3, p.heroSkin.shadow);
+  }
+
+  // --- BODY OUTLINE ---
+  // Simple 1px outline around major shapes using dark color
+  // Top of head
+  const outCol = p.heroArmor.outline;
+  // We skip full outline computation for perf; the shaded rects handle it
+}
+
+function generateHero() {
+  const ctx = getScaledCtx('hero-preview', 96, 192);
+  const dirs = [0, 1, 2, 3]; // down, left, right, up
+  const frames = [0, 1, 2];
+  for (let d = 0; d < 4; d++) {
+    for (let f = 0; f < 3; f++) {
+      drawHeroFrame(ctx, f * 32, d * 48, dirs[d], frames[f]);
+    }
+  }
+  log('Hero spritesheet generated (96x192, 12 frames)');
+}
+
+// ============================================================
+// CHARACTER: HEALER (紬)
+// ============================================================
+function drawHealerFrame(ctx, ox, oy, dir, frame) {
+  const bobY = frame === 0 ? 0 : -1;
+  const p = PAL;
+
+  // Shadow
+  drawEllipse(ctx, ox+16, oy+46, 7, 2, rgba(0,0,0,0.3));
+
+  // --- FEET (sandals) ---
+  const footY = oy + 42;
+  const lx = ox + 10 + (frame === 1 ? -2 : frame === 2 ? 1 : 0);
+  const rx = ox + 18 + (frame === 1 ? -1 : frame === 2 ? 2 : 0);
+  const ly = footY + (frame === 1 ? -1 : 0);
+  const ry = footY + (frame === 2 ? -1 : 0);
+  shadedRect(ctx, lx, ly, 5, 4, p.heroBoot);
+  shadedRect(ctx, rx, ry, 5, 4, p.heroBoot);
+
+  // --- ROBE (long, flows down) ---
+  const robeY = oy + 18 + bobY;
+  // Main robe body
+  for (let ry2 = 0; ry2 < 24; ry2++) {
+    const flare = ry2 > 16 ? Math.floor((ry2-16) * 0.5) : 0;
+    const rw = 16 + flare * 2;
+    const rx2 = ox + 8 - flare;
+    const c = ry2 < 4 ? p.healerRobe.highlight : ry2 < 16 ? p.healerRobe.base : p.healerRobe.shadow;
+    fillRect(ctx, rx2, robeY + ry2, rw, 1, c);
+  }
+  // Green accent trim
+  fillRect(ctx, ox+8, robeY, 16, 2, p.healerAccent.base);
+  fillRect(ctx, ox+8, robeY+22, 18, 2, p.healerAccent.base);
+  // Sash/belt
+  shadedRect(ctx, ox+9, robeY+10, 14, 3, p.healerAccent);
+  // Robe center line
+  fillRect(ctx, ox+15, robeY+2, 2, 20, p.healerRobe.shadow);
+  // Cross/healing symbol on chest
+  fillRect(ctx, ox+15, robeY+4, 2, 5, p.healerAccent.highlight);
+  fillRect(ctx, ox+13, robeY+6, 6, 1, p.healerAccent.highlight);
+
+  // --- ARMS ---
+  const armSwing = frame === 1 ? 2 : frame === 2 ? -2 : 0;
+  // Sleeves (wide)
+  fillRect(ctx, ox+4, robeY+2, 4, 8, p.healerRobe.base);
+  fillRect(ctx, ox+4, robeY+2, 4, 2, p.healerRobe.highlight);
+  fillRect(ctx, ox+24, robeY+2, 4, 8, p.healerRobe.base);
+  fillRect(ctx, ox+24, robeY+2, 4, 2, p.healerRobe.highlight);
+  // Hands
+  fillRect(ctx, ox+4, robeY+10+Math.max(0,armSwing), 4, 3, p.healerSkin.base);
+  fillRect(ctx, ox+24, robeY+10+Math.max(0,-armSwing), 4, 3, p.healerSkin.base);
+
+  // Vial (held in right hand when facing down)
+  if (dir === 0 || dir === 2) {
+    const vx = ox + 25, vy = robeY + 11;
+    fillRect(ctx, vx, vy, 3, 5, p.healerVial.base);
+    fillRect(ctx, vx, vy, 3, 1, p.healerVial.highlight);
+    fillRect(ctx, vx+1, vy-1, 1, 1, p.healerVial.shadow);
+  }
+
+  // --- HEAD ---
+  const headY = oy + 4 + bobY;
+
+  if (dir === 3) {
+    // Back view - hair
+    shadedRect(ctx, ox+9, headY, 14, 14, p.healerHair);
+    // Long hair strands
+    for (let i = 0; i < 3; i++) {
+      fillRect(ctx, ox+10+i*4, headY+13, 3, 6, p.healerHair.base);
+      fillRect(ctx, ox+10+i*4, headY+17, 3, 2, p.healerHair.shadow);
+    }
+    fillRect(ctx, ox+13, headY+13, 6, 2, p.healerSkin.shadow);
+  } else {
+    // Hair (long, green)
+    fillRect(ctx, ox+8, headY, 16, 6, p.healerHair.base);
+    fillRect(ctx, ox+8, headY, 16, 2, p.healerHair.highlight);
+    // Side hair strands
+    fillRect(ctx, ox+7, headY+4, 3, 12, p.healerHair.base);
+    fillRect(ctx, ox+22, headY+4, 3, 12, p.healerHair.base);
+    fillRect(ctx, ox+7, headY+14, 3, 2, p.healerHair.shadow);
+    fillRect(ctx, ox+22, headY+14, 3, 2, p.healerHair.shadow);
+
+    // Face
+    shadedRect(ctx, ox+10, headY+5, 12, 9, p.healerSkin);
+
+    // Eyes
+    if (dir === 0) {
+      px(ctx, ox+13, headY+8, '#208040');
+      px(ctx, ox+14, headY+8, '#208040');
+      px(ctx, ox+18, headY+8, '#208040');
+      px(ctx, ox+19, headY+8, '#208040');
+      px(ctx, ox+13, headY+7, '#60d880');
+      px(ctx, ox+18, headY+7, '#60d880');
+      // Mouth
+      px(ctx, ox+15, headY+11, p.healerSkin.shadow);
+      px(ctx, ox+16, headY+11, p.healerSkin.shadow);
+    } else if (dir === 1) {
+      px(ctx, ox+12, headY+8, '#208040');
+      px(ctx, ox+13, headY+8, '#208040');
+      px(ctx, ox+12, headY+7, '#60d880');
+      px(ctx, ox+13, headY+11, p.healerSkin.shadow);
+    } else if (dir === 2) {
+      px(ctx, ox+19, headY+8, '#208040');
+      px(ctx, ox+20, headY+8, '#208040');
+      px(ctx, ox+20, headY+7, '#60d880');
+      px(ctx, ox+18, headY+11, p.healerSkin.shadow);
+    }
+    // Neck
+    fillRect(ctx, ox+13, headY+13, 6, 3, p.healerSkin.shadow);
+    // Hair accessory (flower)
+    px(ctx, ox+20, headY+4, p.flower_pink.base);
+    px(ctx, ox+21, headY+3, p.flower_pink.highlight);
+    px(ctx, ox+21, headY+5, p.flower_pink.shadow);
+    px(ctx, ox+19, headY+3, p.flower_pink.base);
+  }
+}
+
+function generateHealer() {
+  const ctx = getScaledCtx('healer-preview', 96, 192);
+  const dirs = [0, 1, 2, 3];
+  const frames = [0, 1, 2];
+  for (let d = 0; d < 4; d++) {
+    for (let f = 0; f < 3; f++) {
+      drawHealerFrame(ctx, f * 32, d * 48, dirs[d], frames[f]);
+    }
+  }
+  log('Healer spritesheet generated (96x192, 12 frames)');
+}
+
+// ============================================================
+// TILES: COBBLESTONE
+// ============================================================
+function drawCobbleTile(ctx, ox, oy, variant) {
+  const p = PAL.cobble;
+  // Fill base
+  fillRect(ctx, ox, oy, 32, 32, p.base);
+
+  switch(variant) {
+    case 0: // Regular grid cobblestone
+      for (let row = 0; row < 4; row++) {
+        const offsetX = (row % 2) * 4;
+        for (let col = 0; col < 4; col++) {
+          const sx = ox + col * 8 + offsetX;
+          const sy = oy + row * 8;
+          const stoneCol = colorVariation(p.base, 10);
+          fillRect(ctx, sx+1, sy+1, 7, 7, stoneCol);
+          fillRect(ctx, sx+1, sy+1, 7, 1, lighten(stoneCol, 15));
+          fillRect(ctx, sx+1, sy+1, 1, 7, lighten(stoneCol, 10));
+          fillRect(ctx, sx+1, sy+7, 7, 1, darken(stoneCol, 15));
+          fillRect(ctx, sx+7, sy+1, 1, 7, darken(stoneCol, 10));
+          // Grout lines
+          fillRect(ctx, sx, sy, 8, 1, p.outline);
+          fillRect(ctx, sx, sy, 1, 8, p.outline);
+        }
+      }
+      break;
+
+    case 1: // Irregular cobblestone
+      const stones = [
+        [1,1,10,6],[12,1,8,5],[21,1,10,7],
+        [1,8,7,8],[9,7,11,6],[21,9,10,7],
+        [1,17,12,7],[14,14,8,9],[23,17,8,7],
+        [1,25,9,6],[11,24,10,7],[22,25,9,6]
+      ];
+      stones.forEach(([sx,sy,sw,sh]) => {
+        const sc = colorVariation(p.base, 12);
+        fillRect(ctx, ox+sx, oy+sy, sw, sh, sc);
+        fillRect(ctx, ox+sx, oy+sy, sw, 1, lighten(sc, 15));
+        fillRect(ctx, ox+sx, oy+sy, 1, sh, lighten(sc, 10));
+        fillRect(ctx, ox+sx, oy+sy+sh-1, sw, 1, darken(sc, 15));
+        fillRect(ctx, ox+sx+sw-1, oy+sy, 1, sh, darken(sc, 10));
+      });
+      // Grout
+      fillRect(ctx, ox, oy, 32, 1, p.outline);
+      fillRect(ctx, ox, oy, 1, 32, p.outline);
+      break;
+
+    case 2: // Circular pattern
+      fillRect(ctx, ox, oy, 32, 32, p.shadow);
+      for (let ring = 3; ring >= 0; ring--) {
+        const r = 4 + ring * 4;
+        const col = colorVariation(p.base, 8);
+        drawCircle(ctx, ox+16, oy+16, r, col);
+        drawCircle(ctx, ox+16, oy+16, r-1, lighten(col, 10));
+      }
+      // Center stone
+      fillRect(ctx, ox+14, oy+14, 5, 5, lighten(p.base, 15));
+      break;
+
+    case 3: // Stairs (up)
+      for (let step = 0; step < 4; step++) {
+        const sy = oy + step * 8;
+        const sc = step < 2 ? lighten(p.base, 10) : darken(p.base, step * 5);
+        fillRect(ctx, ox, sy, 32, 8, sc);
+        fillRect(ctx, ox, sy, 32, 1, lighten(sc, 20));
+        fillRect(ctx, ox, sy+7, 32, 1, darken(sc, 20));
+        // Step edge shadow
+        fillRect(ctx, ox, sy+6, 32, 2, darken(sc, 15));
+      }
+      break;
+
+    case 4: // Stairs (side)
+      for (let step = 0; step < 4; step++) {
+        const sx = ox + step * 8;
+        const sc = step < 2 ? lighten(p.base, 10) : darken(p.base, step * 5);
+        fillRect(ctx, sx, oy, 8, 32, sc);
+        fillRect(ctx, sx, oy, 1, 32, lighten(sc, 20));
+        fillRect(ctx, sx+7, oy, 1, 32, darken(sc, 20));
+      }
+      break;
+
+    case 5: // Curb/edge
+      fillRect(ctx, ox, oy, 32, 32, p.base);
+      // Top half is raised curb
+      fillRect(ctx, ox, oy, 32, 14, lighten(p.base, 15));
+      fillRect(ctx, ox, oy, 32, 2, lighten(p.base, 25));
+      // Drop shadow
+      fillRect(ctx, ox, oy+14, 32, 3, darken(p.base, 20));
+      // Stone texture on curb
+      for (let i = 0; i < 4; i++) {
+        fillRect(ctx, ox + i*8, oy, 1, 14, p.shadow);
+      }
+      break;
+
+    case 6: // Cracked
+      // Base cobble
+      drawCobbleTile(ctx, ox, oy, 0);
+      // Cracks
+      const crackCol = darken(p.base, 30);
+      drawLine(ctx, ox+8, oy+5, ox+18, oy+14, crackCol);
+      drawLine(ctx, ox+18, oy+14, ox+14, oy+25, crackCol);
+      drawLine(ctx, ox+14, oy+25, ox+22, oy+30, crackCol);
+      drawLine(ctx, ox+12, oy+10, ox+6, oy+18, crackCol);
+      // Crack highlight edge
+      drawLine(ctx, ox+9, oy+5, ox+19, oy+14, lighten(crackCol, 15));
+      break;
+
+    case 7: // Mossy
+      drawCobbleTile(ctx, ox, oy, 0);
+      // Moss patches
+      const mossCol = PAL.cobbleGreen;
+      const mossPts = [[2,3],[5,8],[20,5],[25,18],[8,22],[15,28],[28,10],[12,15]];
+      mossPts.forEach(([mx,my]) => {
+        const mc = colorVariation(mossCol.base, 15);
+        fillRect(ctx, ox+mx, oy+my, 3, 2, mc);
+        px(ctx, ox+mx+1, oy+my, lighten(mc, 15));
+      });
+      break;
+  }
+}
+
+function generateTilesCobble() {
+  const ctx = getScaledCtx('tiles-cobble', 256, 128);
+  for (let i = 0; i < 8; i++) {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    drawCobbleTile(ctx, col * 32 + col * 32, row * 32 + row * 32, i);
+    // Actually place properly
+  }
+  // Re-do properly: 4 cols x 2 rows
+  const ctx2 = getScaledCtx('tiles-cobble', 256, 128);
+  for (let i = 0; i < 8; i++) {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    drawCobbleTile(ctx2, col * 32 + col * 32, row * 64, i);
+  }
+  log('Cobblestone tiles generated (8 variants)');
+}
+
+function generateTilesCobbleFixed() {
+  const ctx = getScaledCtx('tiles-cobble', 256, 128);
+  for (let i = 0; i < 8; i++) {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    drawCobbleTile(ctx, col * 64, row * 64, i);
+  }
+  log('Cobblestone tiles generated (8 variants)');
+}
+
+// ============================================================
+// TILES: WALLS
+// ============================================================
+function drawWallTile(ctx, ox, oy, variant) {
+  switch(variant) {
+    case 0: { // Stone wall front (no window)
+      const p = PAL.wall;
+      fillRect(ctx, ox, oy, 32, 32, p.base);
+      // Individual stones
+      const rows = [[0,0,10,6],[11,0,9,6],[21,0,11,6],
+                     [0,7,8,7],[9,7,12,7],[22,7,10,7],
+                     [0,15,11,8],[12,15,9,8],[22,15,10,8],
+                     [0,24,9,8],[10,24,11,8],[22,24,10,8]];
+      rows.forEach(([sx,sy,sw,sh]) => {
+        const sc = colorVariation(p.base, 8);
+        fillRect(ctx, ox+sx+1, oy+sy+1, sw-1, sh-1, sc);
+        fillRect(ctx, ox+sx+1, oy+sy+1, sw-1, 1, lighten(sc, 12));
+        fillRect(ctx, ox+sx+1, oy+sy+1, 1, sh-1, lighten(sc, 8));
+        fillRect(ctx, ox+sx+1, oy+sy+sh-1, sw-1, 1, darken(sc, 12));
+        fillRect(ctx, ox+sx+sw-1, oy+sy+1, 1, sh-1, darken(sc, 8));
+      });
+      // Mortar lines
+      for (let y of [0,7,15,24]) fillRect(ctx, ox, oy+y, 32, 1, p.outline);
+      break;
+    }
+    case 1: { // Stone wall with window
+      drawWallTile(ctx, ox, oy, 0);
+      const wp = PAL.window;
+      // Window frame
+      shadedRect(ctx, ox+10, oy+6, 12, 14, {highlight:'#907868',base:'#786050',shadow:'#604838',outline:'#483828'});
+      // Glass
+      fillRect(ctx, ox+12, oy+8, 8, 10, wp.base);
+      fillRect(ctx, ox+12, oy+8, 8, 3, wp.highlight);
+      fillRect(ctx, ox+12, oy+15, 8, 3, wp.shadow);
+      // Cross bar
+      fillRect(ctx, ox+15, oy+8, 2, 10, '#786050');
+      fillRect(ctx, ox+12, oy+12, 8, 2, '#786050');
+      // Highlight reflection
+      fillRect(ctx, ox+13, oy+9, 2, 2, lighten(wp.highlight, 20));
+      break;
+    }
+    case 2: { // Stone wall side
+      const p = PAL.wall;
+      fillRect(ctx, ox, oy, 32, 32, darken(p.base, 10));
+      for (let row = 0; row < 4; row++) {
+        for (let col = 0; col < 2; col++) {
+          const sx = ox + col * 16;
+          const sy = oy + row * 8;
+          const sc = colorVariation(darken(p.base, 10), 6);
+          fillRect(ctx, sx+1, sy+1, 15, 7, sc);
+          fillRect(ctx, sx+1, sy+1, 15, 1, lighten(sc, 8));
+          fillRect(ctx, sx+1, sy+7, 15, 1, darken(sc, 8));
+        }
+        fillRect(ctx, ox, oy+row*8, 32, 1, p.outline);
+      }
+      // Depth shading (darker on right = perspective)
+      for (let x = 0; x < 8; x++) {
+        fillRect(ctx, ox+24+x, oy, 1, 32, rgba(0,0,0, 0.03 * x));
+      }
+      break;
+    }
+    case 3: { // Stone wall top
+      const p = PAL.wall;
+      fillRect(ctx, ox, oy, 32, 32, lighten(p.base, 10));
+      // Top-down stone pattern
+      for (let row = 0; row < 4; row++) {
+        const off = (row%2) * 8;
+        for (let col = 0; col < 3; col++) {
+          const sx = ox + col * 12 + off - 4;
+          const sy = oy + row * 8;
+          const sc = colorVariation(lighten(p.base, 10), 6);
+          fillRect(ctx, Math.max(ox,sx), sy+1, 11, 7, sc);
+        }
+        fillRect(ctx, ox, oy+row*8, 32, 1, darken(p.base, 5));
+      }
+      break;
+    }
+    case 4: { // Wood wall
+      const p = PAL.wood;
+      fillRect(ctx, ox, oy, 32, 32, p.base);
+      // Vertical planks
+      for (let plank = 0; plank < 4; plank++) {
+        const px2 = ox + plank * 8;
+        const pc = colorVariation(p.base, 8);
+        fillRect(ctx, px2+1, oy, 7, 32, pc);
+        fillRect(ctx, px2+1, oy, 1, 32, lighten(pc, 12));
+        fillRect(ctx, px2+7, oy, 1, 32, darken(pc, 12));
+        // Wood grain
+        for (let g = 0; g < 6; g++) {
+          const gy = oy + 2 + g * 5 + Math.floor(Math.random()*2);
+          fillRect(ctx, px2+2, gy, 5, 1, darken(pc, 8));
+        }
+        // Plank gap
+        fillRect(ctx, px2, oy, 1, 32, p.outline);
+      }
+      // Cross beams
+      fillRect(ctx, ox, oy+10, 32, 2, darken(p.base, 15));
+      fillRect(ctx, ox, oy+10, 32, 1, p.highlight);
+      fillRect(ctx, ox, oy+22, 32, 2, darken(p.base, 15));
+      fillRect(ctx, ox, oy+22, 32, 1, p.highlight);
+      break;
+    }
+    case 5: { // Brick wall
+      const p = PAL.brick;
+      fillRect(ctx, ox, oy, 32, 32, p.base);
+      for (let row = 0; row < 8; row++) {
+        const off = (row % 2) * 6;
+        for (let col = 0; col < 3; col++) {
+          const bx = ox + col * 12 + off - 3;
+          const by = oy + row * 4;
+          const bc = colorVariation(p.base, 8);
+          const bx2 = Math.max(ox, bx);
+          const bw = Math.min(ox+32, bx+11) - bx2;
+          if (bw > 0) {
+            fillRect(ctx, bx2, by+1, bw, 3, bc);
+            fillRect(ctx, bx2, by+1, bw, 1, lighten(bc, 10));
+            fillRect(ctx, bx2, by+3, bw, 1, darken(bc, 10));
+          }
+        }
+        fillRect(ctx, ox, oy+row*4, 32, 1, darken(p.base, 25));
+      }
+      break;
+    }
+  }
+}
+
+function generateTilesWall() {
+  const ctx = getScaledCtx('tiles-wall', 192, 64);
+  for (let i = 0; i < 6; i++) {
+    const col = i % 3;
+    const row = Math.floor(i / 3);
+    drawWallTile(ctx, col * 64, row * 32, i);
+  }
+  log('Wall tiles generated (6 variants)');
+}
+
+// ============================================================
+// BUILDINGS
+// ============================================================
+function drawBuilding_House(ctx, ox, oy) {
+  // Small house 128x96
+  const W = 128, H = 96;
+
+  // Foundation
+  fillRect(ctx, ox+8, oy+82, 112, 14, PAL.cobble.shadow);
+  fillRect(ctx, ox+8, oy+82, 112, 2, PAL.cobble.highlight);
+
+  // Main wall
+  for (let row = 0; row < 8; row++) {
+    for (let col = 0; col < 7; col++) {
+      const sx = ox + 12 + col * 15;
+      const sy = oy + 36 + row * 6;
+      if (sy + 6 > oy + 82) continue;
+      const sc = colorVariation(PAL.wall.base, 6);
+      fillRect(ctx, sx, sy, 14, 5, sc);
+      fillRect(ctx, sx, sy, 14, 1, lighten(sc, 10));
+      fillRect(ctx, sx, sy+4, 14, 1, darken(sc, 10));
+    }
+    fillRect(ctx, ox+12, oy+36+row*6, 104, 1, PAL.wall.outline);
+  }
+  // Wall edges
+  fillRect(ctx, ox+12, oy+36, 104, 46, 'transparent');
+  fillRect(ctx, ox+12, oy+36, 1, 46, PAL.wall.shadow);
+  fillRect(ctx, ox+115, oy+36, 1, 46, PAL.wall.outline);
+
+  // Door
+  shadedRect(ctx, ox+50, oy+56, 18, 26, PAL.door);
+  fillRect(ctx, ox+52, oy+58, 14, 22, darken(PAL.door.base, 10));
+  // Door frame
+  fillRect(ctx, ox+49, oy+55, 20, 1, PAL.door.highlight);
+  fillRect(ctx, ox+49, oy+55, 1, 27, PAL.door.highlight);
+  fillRect(ctx, ox+69, oy+55, 1, 27, PAL.door.shadow);
+  // Door knob
+  fillRect(ctx, ox+63, oy+69, 2, 2, PAL.metalGold.base);
+  px(ctx, ox+63, oy+69, PAL.metalGold.highlight);
+  // Door arch
+  fillRect(ctx, ox+50, oy+54, 18, 3, PAL.wall.highlight);
+
+  // Window left
+  shadedRect(ctx, ox+22, oy+48, 16, 14, {highlight:'#907868',base:'#786050',shadow:'#604838',outline:'#483828'});
+  fillRect(ctx, ox+24, oy+50, 12, 10, PAL.window.base);
+  fillRect(ctx, ox+24, oy+50, 12, 3, PAL.window.highlight);
+  fillRect(ctx, ox+29, oy+50, 2, 10, '#786050');
+  fillRect(ctx, ox+24, oy+54, 12, 2, '#786050');
+  fillRect(ctx, ox+25, oy+51, 3, 2, lighten(PAL.window.highlight, 25));
+
+  // Window right
+  shadedRect(ctx, ox+80, oy+48, 16, 14, {highlight:'#907868',base:'#786050',shadow:'#604838',outline:'#483828'});
+  fillRect(ctx, ox+82, oy+50, 12, 10, PAL.window.base);
+  fillRect(ctx, ox+82, oy+50, 12, 3, PAL.window.highlight);
+  fillRect(ctx, ox+87, oy+50, 2, 10, '#786050');
+  fillRect(ctx, ox+82, oy+54, 12, 2, '#786050');
+  fillRect(ctx, ox+83, oy+51, 3, 2, lighten(PAL.window.highlight, 25));
+
+  // Roof
+  for (let ry = 0; ry < 30; ry++) {
+    const roofW = 128 - ry * 3;
+    const roofX = ox + (128 - roofW) / 2;
+    const rc = ry < 8 ? PAL.roof.highlight : ry < 22 ? PAL.roof.base : PAL.roof.shadow;
+    fillRect(ctx, roofX, oy + 6 + ry, roofW, 1, rc);
+    // Tile rows
+    if (ry % 4 === 0 && ry > 0) {
+      fillRect(ctx, roofX, oy + 6 + ry, roofW, 1, PAL.roof.outline);
+    }
+  }
+  // Roof ridge
+  fillRect(ctx, ox+40, oy+4, 48, 3, PAL.roof.highlight);
+  fillRect(ctx, ox+40, oy+7, 48, 1, PAL.roof.outline);
+  // Chimney
+  shadedRect(ctx, ox+90, oy+4, 10, 18, PAL.brick);
+  fillRect(ctx, ox+88, oy+2, 14, 3, PAL.brick.highlight);
+
+  // Flower box under windows
+  fillRect(ctx, ox+22, oy+63, 16, 3, PAL.wood.shadow);
+  for (let fi = 0; fi < 5; fi++) {
+    px(ctx, ox+23+fi*3, oy+61, colorVariation(PAL.flower_pink.base, 20));
+    px(ctx, ox+24+fi*3, oy+62, PAL.leaf.base);
+  }
+  fillRect(ctx, ox+80, oy+63, 16, 3, PAL.wood.shadow);
+  for (let fi = 0; fi < 5; fi++) {
+    px(ctx, ox+81+fi*3, oy+61, colorVariation(PAL.flower_white.base, 15));
+    px(ctx, ox+82+fi*3, oy+62, PAL.leaf.base);
+  }
+}
+
+function drawBuilding_Inn(ctx, ox, oy) {
+  // Inn 128x128
+  // Foundation
+  fillRect(ctx, ox+4, oy+114, 120, 14, PAL.cobble.shadow);
+  fillRect(ctx, ox+4, oy+114, 120, 2, PAL.cobble.highlight);
+
+  // Main wall (2 floors)
+  for (let row = 0; row < 14; row++) {
+    for (let col = 0; col < 8; col++) {
+      const sx = ox + 8 + col * 14;
+      const sy = oy + 40 + row * 5.5;
+      const sc = colorVariation(PAL.wall.base, 5);
+      fillRect(ctx, sx, Math.round(sy), 13, 5, sc);
+      fillRect(ctx, sx, Math.round(sy), 13, 1, lighten(sc, 8));
+    }
+  }
+
+  // Floor divider (timber frame style)
+  fillRect(ctx, ox+6, oy+72, 116, 3, PAL.wood.base);
+  fillRect(ctx, ox+6, oy+72, 116, 1, PAL.wood.highlight);
+
+  // Timber frame beams
+  fillRect(ctx, ox+6, oy+40, 3, 74, PAL.wood.shadow);
+  fillRect(ctx, ox+119, oy+40, 3, 74, PAL.wood.shadow);
+  fillRect(ctx, ox+40, oy+40, 3, 74, PAL.wood.shadow);
+  fillRect(ctx, ox+85, oy+40, 3, 74, PAL.wood.shadow);
+
+  // 2nd floor windows (3)
+  for (let w = 0; w < 3; w++) {
+    const wx = ox + 14 + w * 38;
+    shadedRect(ctx, wx, oy+48, 14, 16, {highlight:'#907868',base:'#786050',shadow:'#604838',outline:'#483828'});
+    fillRect(ctx, wx+2, oy+50, 10, 12, PAL.window.base);
+    fillRect(ctx, wx+2, oy+50, 10, 3, PAL.window.highlight);
+    fillRect(ctx, wx+6, oy+50, 2, 12, '#786050');
+    fillRect(ctx, wx+2, oy+55, 10, 2, '#786050');
+    fillRect(ctx, wx+3, oy+51, 2, 2, lighten(PAL.window.highlight, 25));
+  }
+
+  // 1st floor: door center, windows sides
+  // Door (double)
+  shadedRect(ctx, ox+48, oy+80, 28, 34, PAL.door);
+  fillRect(ctx, ox+50, oy+82, 24, 30, darken(PAL.door.base, 8));
+  fillRect(ctx, ox+61, oy+82, 2, 30, PAL.door.shadow);
+  fillRect(ctx, ox+56, oy+97, 3, 3, PAL.metalGold.base);
+  fillRect(ctx, ox+65, oy+97, 3, 3, PAL.metalGold.base);
+  // Door arch
+  for (let a = 0; a < 14; a++) {
+    const ah = Math.round(Math.sqrt(Math.max(0, 196 - (a-7)*(a-7))) * 0.5);
+    fillRect(ctx, ox+48+a*2, oy+78-ah, 2, ah+2, PAL.wall.highlight);
+  }
+
+  // 1st floor windows
+  for (let w of [0, 1]) {
+    const wx = ox + (w === 0 ? 14 : 96);
+    shadedRect(ctx, wx, oy+84, 14, 16, {highlight:'#907868',base:'#786050',shadow:'#604838',outline:'#483828'});
+    fillRect(ctx, wx+2, oy+86, 10, 12, PAL.window.base);
+    fillRect(ctx, wx+2, oy+86, 10, 3, PAL.window.highlight);
+    // Warm interior glow
+    fillRect(ctx, wx+3, oy+90, 8, 6, '#e8c878');
+    fillRect(ctx, wx+6, oy+86, 2, 12, '#786050');
+  }
+
+  // Roof (larger, steeper)
+  for (let ry = 0; ry < 36; ry++) {
+    const roofW = 136 - ry * 3;
+    const roofX = ox + (128 - roofW) / 2;
+    const rc = ry < 10 ? PAL.roof.highlight : ry < 26 ? PAL.roof.base : PAL.roof.shadow;
+    fillRect(ctx, Math.round(roofX), oy + 4 + ry, Math.round(roofW), 1, rc);
+    if (ry % 5 === 0 && ry > 0) {
+      fillRect(ctx, Math.round(roofX), oy + 4 + ry, Math.round(roofW), 1, PAL.roof.outline);
+    }
+  }
+  // Dormer window
+  for (let dy = 0; dy < 12; dy++) {
+    const dw = 20 - dy;
+    fillRect(ctx, ox + 54 + Math.floor(dy/2), oy + 12 + dy, dw, 1,
+      dy < 4 ? PAL.roof.highlight : PAL.roof.base);
+  }
+  fillRect(ctx, ox+58, oy+18, 12, 8, PAL.window.base);
+  fillRect(ctx, ox+58, oy+18, 12, 2, PAL.window.highlight);
+  fillRect(ctx, ox+63, oy+18, 2, 8, '#786050');
+
+  // Sign: "INN" (宿)
+  shadedRect(ctx, ox+50, oy+74, 26, 8, PAL.wood);
+  // Simple text pixels for "宿"
+  fillRect(ctx, ox+54, oy+76, 1, 4, '#e8e0d0');
+  fillRect(ctx, ox+54, oy+76, 4, 1, '#e8e0d0');
+  fillRect(ctx, ox+57, oy+76, 1, 4, '#e8e0d0');
+  fillRect(ctx, ox+60, oy+76, 5, 1, '#e8e0d0');
+  fillRect(ctx, ox+62, oy+76, 1, 4, '#e8e0d0');
+  fillRect(ctx, ox+60, oy+78, 5, 1, '#e8e0d0');
+  fillRect(ctx, ox+67, oy+76, 5, 1, '#e8e0d0');
+  fillRect(ctx, ox+69, oy+76, 1, 4, '#e8e0d0');
+  fillRect(ctx, ox+67, oy+79, 5, 1, '#e8e0d0');
+
+  // Hanging sign bracket
+  fillRect(ctx, ox+62, oy+70, 2, 5, PAL.metal.base);
+}
+
+function drawBuilding_Shop(ctx, ox, oy) {
+  // Shop 96x96
+  // Foundation
+  fillRect(ctx, ox+4, oy+82, 88, 14, PAL.cobble.shadow);
+
+  // Wall (wood + plaster)
+  fillRect(ctx, ox+8, oy+36, 80, 46, PAL.wall.base);
+  // Wood frame
+  fillRect(ctx, ox+6, oy+36, 3, 46, PAL.wood.base);
+  fillRect(ctx, ox+87, oy+36, 3, 46, PAL.wood.base);
+  fillRect(ctx, ox+6, oy+36, 84, 3, PAL.wood.base);
+  fillRect(ctx, ox+6, oy+58, 84, 2, PAL.wood.base);
+
+  // Shop window (large display)
+  fillRect(ctx, ox+14, oy+40, 30, 16, PAL.window.shadow);
+  fillRect(ctx, ox+14, oy+40, 30, 4, PAL.window.highlight);
+  // Display items (potion bottles)
+  fillRect(ctx, ox+18, oy+48, 3, 6, '#e84848');
+  fillRect(ctx, ox+23, oy+49, 3, 5, '#48a8e8');
+  fillRect(ctx, ox+28, oy+47, 3, 7, '#48e868');
+  fillRect(ctx, ox+33, oy+48, 3, 6, '#e8d848');
+  // Shelf
+  fillRect(ctx, ox+14, oy+54, 30, 2, PAL.wood.shadow);
+
+  // Door
+  shadedRect(ctx, ox+54, oy+60, 16, 22, PAL.door);
+  fillRect(ctx, ox+56, oy+62, 12, 18, darken(PAL.door.base, 8));
+  fillRect(ctx, ox+64, oy+70, 2, 2, PAL.metalGold.base);
+
+  // Another window (right side, smaller)
+  shadedRect(ctx, ox+74, oy+62, 10, 12, {highlight:'#907868',base:'#786050',shadow:'#604838',outline:'#483828'});
+  fillRect(ctx, ox+76, oy+64, 6, 8, PAL.window.base);
+
+  // Awning
+  for (let ay = 0; ay < 8; ay++) {
+    const aw = 72 - ay;
+    const acol = ay < 3 ? '#c84848' : ay < 6 ? '#b83838' : '#a82828';
+    fillRect(ctx, ox + 12 + Math.floor(ay/2), oy + 34 + ay, aw, 1, acol);
+  }
+  // Awning stripes
+  for (let s = 0; s < 8; s++) {
+    fillRect(ctx, ox + 14 + s*9, oy+34, 4, 8,
+      s % 2 === 0 ? '#f8f0e0' : 'transparent');
+  }
+
+  // Roof
+  for (let ry = 0; ry < 28; ry++) {
+    const roofW = 104 - ry * 3;
+    const roofX = ox + (96 - roofW) / 2;
+    const rc = ry < 8 ? PAL.roofThatch.highlight : ry < 20 ? PAL.roofThatch.base : PAL.roofThatch.shadow;
+    fillRect(ctx, Math.round(roofX), oy + 8 + ry, Math.round(roofW), 1, rc);
+    // Thatch texture
+    if (ry % 3 === 0) {
+      for (let tx = 0; tx < Math.round(roofW); tx += 4) {
+        px(ctx, Math.round(roofX) + tx + Math.floor(Math.random()*3), oy + 8 + ry,
+          colorVariation(PAL.roofThatch.base, 15));
+      }
+    }
+  }
+
+  // Shop sign
+  shadedRect(ctx, ox+20, oy+26, 40, 10, PAL.wood);
+  // "SHOP" text approximation
+  const signTxt = [[2,2,2,1],[5,2,2,1],[2,4,5,1],[2,6,2,1],[5,6,2,1],
+                   [10,2,1,5],[12,4,4,1],[17,2,1,5],
+                   [20,2,1,6],[21,2,5,1],[21,4,4,1],[26,2,1,6],[21,7,5,1],
+                   [29,2,1,6],[30,2,4,1],[30,4,3,1],[34,2,1,3]];
+  signTxt.forEach(([sx,sy,sw,sh]) => {
+    fillRect(ctx, ox+22+sx, oy+27+sy, sw, sh, '#e8e0d0');
+  });
+}
+
+function drawBuilding_Guild(ctx, ox, oy) {
+  // Apothecary Guild 128x128
+  // Foundation (stone, grander)
+  fillRect(ctx, ox+4, oy+110, 120, 18, PAL.cobble.base);
+  fillRect(ctx, ox+4, oy+110, 120, 2, PAL.cobble.highlight);
+  // Steps
+  fillRect(ctx, ox+40, oy+118, 48, 10, PAL.cobble.highlight);
+  fillRect(ctx, ox+38, oy+122, 52, 6, PAL.cobble.base);
+  fillRect(ctx, ox+38, oy+122, 52, 1, PAL.cobble.highlight);
+
+  // Main wall (plaster with stone accents)
+  fillRect(ctx, ox+8, oy+38, 112, 72, lighten(PAL.wall.base, 10));
+  // Stone corner pillars
+  for (let py = 0; py < 9; py++) {
+    shadedRect(ctx, ox+8, oy+38+py*8, 8, 7, PAL.wall);
+    shadedRect(ctx, ox+112, oy+38+py*8, 8, 7, PAL.wall);
+  }
+
+  // Center pillar
+  fillRect(ctx, ox+60, oy+44, 8, 66, PAL.wall.shadow);
+  fillRect(ctx, ox+60, oy+44, 8, 1, PAL.wall.highlight);
+
+  // Large arched entrance
+  shadedRect(ctx, ox+44, oy+68, 40, 42, PAL.door);
+  fillRect(ctx, ox+46, oy+72, 36, 36, darken(PAL.door.base, 12));
+  fillRect(ctx, ox+63, oy+72, 2, 36, PAL.door.shadow);
+  // Arch
+  for (let a = 0; a < 20; a++) {
+    const ah = Math.round(Math.sqrt(Math.max(0, 400 - (a-10)*(a-10))) * 0.4);
+    fillRect(ctx, ox+44+a*2, oy+66-ah, 2, ah+3, PAL.wall.highlight);
+  }
+  // Door knocker
+  drawCircle(ctx, ox+56, oy+88, 2, PAL.metalGold.base);
+  drawCircle(ctx, ox+72, oy+88, 2, PAL.metalGold.base);
+
+  // 2nd floor windows (4)
+  for (let w = 0; w < 4; w++) {
+    const wx = ox + 16 + w * 26;
+    shadedRect(ctx, wx, oy+44, 12, 18, {highlight:'#907868',base:'#786050',shadow:'#604838',outline:'#483828'});
+    fillRect(ctx, wx+2, oy+46, 8, 14, PAL.window.base);
+    fillRect(ctx, wx+2, oy+46, 8, 4, PAL.window.highlight);
+    // Arch top
+    fillRect(ctx, wx+3, oy+44, 6, 2, PAL.wall.highlight);
+    fillRect(ctx, wx+5, oy+43, 2, 1, PAL.wall.highlight);
+  }
+
+  // Roof (grand, multi-layered)
+  for (let ry = 0; ry < 32; ry++) {
+    const roofW = 140 - ry * 3.5;
+    const roofX = ox + (128 - roofW) / 2;
+    const rc = ry < 8 ? PAL.roof.highlight : ry < 24 ? PAL.roof.base : PAL.roof.shadow;
+    fillRect(ctx, Math.round(roofX), oy + 6 + ry, Math.round(roofW), 1, rc);
+    if (ry % 4 === 0 && ry > 0) {
+      fillRect(ctx, Math.round(roofX), oy + 6 + ry, Math.round(roofW), 1, PAL.roof.outline);
+    }
+  }
+
+  // Central tower/spire
+  for (let ty = 0; ty < 8; ty++) {
+    const tw = 20 - ty * 2;
+    fillRect(ctx, ox + 54 + ty, oy - 2 + ty, tw, 1,
+      ty < 3 ? PAL.roof.highlight : PAL.roof.base);
+  }
+
+  // Guild symbol (mortar and pestle)
+  fillRect(ctx, ox+58, oy+60, 12, 6, PAL.stone.base);
+  drawCircle(ctx, ox+64, oy+62, 4, PAL.stone.highlight);
+  fillRect(ctx, ox+63, oy+57, 2, 6, PAL.wood.base);
+
+  // Hanging herb bundles
+  for (let h = 0; h < 3; h++) {
+    const hx = ox + 18 + h * 10;
+    fillRect(ctx, hx, oy+62, 1, 4, PAL.wood.shadow);
+    fillRect(ctx, hx-1, oy+63, 3, 3, PAL.leaf.base);
+    px(ctx, hx, oy+63, PAL.leaf.highlight);
+  }
+  for (let h = 0; h < 3; h++) {
+    const hx = ox + 92 + h * 10;
+    fillRect(ctx, hx, oy+62, 1, 4, PAL.wood.shadow);
+    fillRect(ctx, hx-1, oy+63, 3, 3, PAL.leaf.base);
+    px(ctx, hx, oy+63, PAL.leaf.highlight);
+  }
+}
+
+function generateBuildings() {
+  setProgress('建物を生成中...');
+  let ctx;
+
+  ctx = getScaledCtx('building-house', 128, 96);
+  drawBuilding_House(ctx, 0, 0);
+  log('Building: House generated (128x96)');
+
+  ctx = getScaledCtx('building-inn', 128, 128);
+  drawBuilding_Inn(ctx, 0, 0);
+  log('Building: Inn generated (128x128)');
+
+  ctx = getScaledCtx('building-shop', 96, 96);
+  drawBuilding_Shop(ctx, 0, 0);
+  log('Building: Shop generated (96x96)');
+
+  ctx = getScaledCtx('building-guild', 128, 128);
+  drawBuilding_Guild(ctx, 0, 0);
+  log('Building: Apothecary Guild generated (128x128)');
+
+  setProgress('建物 完了');
+}
+
+// ============================================================
+// ENEMIES
+// ============================================================
+function drawEnemy_Fairy(ctx, ox, oy, frame) {
+  const p = PAL;
+  const bob = frame === 0 ? 0 : 2;
+
+  // Wings (behind body)
+  const wingFlap = frame === 0 ? 0 : 4;
+  // Left wing
+  for (let wy = 0; wy < 20; wy++) {
+    const ww = Math.round(12 - Math.abs(wy - 10) * 1.2) + wingFlap;
+    if (ww > 0) {
+      fillRect(ctx, ox + 14 - ww, oy + 12 + wy - bob, ww, 1,
+        wy < 6 ? p.fairyWing.highlight : wy < 14 ? p.fairyWing.base : p.fairyWing.shadow);
+    }
+  }
+  // Right wing
+  for (let wy = 0; wy < 20; wy++) {
+    const ww = Math.round(12 - Math.abs(wy - 10) * 1.2) + wingFlap;
+    if (ww > 0) {
+      fillRect(ctx, ox + 50, oy + 12 + wy - bob, ww, 1,
+        wy < 6 ? p.fairyWing.highlight : wy < 14 ? p.fairyWing.base : p.fairyWing.shadow);
+    }
+  }
+  // Wing veins
+  drawLine(ctx, ox+14, oy+22-bob, ox+4, oy+14-bob, p.fairyWing.shadow);
+  drawLine(ctx, ox+50, oy+22-bob, ox+60, oy+14-bob, p.fairyWing.shadow);
+
+  // Body
+  drawEllipse(ctx, ox+32, oy+28-bob, 8, 12, p.fairyPink.base);
+  drawEllipse(ctx, ox+32, oy+26-bob, 7, 4, p.fairyPink.highlight);
+  drawEllipse(ctx, ox+32, oy+34-bob, 7, 4, p.fairyPink.shadow);
+
+  // Head
+  drawCircle(ctx, ox+32, oy+14-bob, 8, p.heroSkin.base);
+  drawCircle(ctx, ox+32, oy+12-bob, 6, p.heroSkin.highlight);
+  // Eyes (large, fairy-like)
+  fillRect(ctx, ox+28, oy+12-bob, 3, 4, '#d048a0');
+  fillRect(ctx, ox+33, oy+12-bob, 3, 4, '#d048a0');
+  px(ctx, ox+29, oy+12-bob, '#f8a0d0');
+  px(ctx, ox+34, oy+12-bob, '#f8a0d0');
+  // Mouth
+  px(ctx, ox+31, oy+17-bob, p.heroSkin.shadow);
+  px(ctx, ox+32, oy+17-bob, p.heroSkin.shadow);
+
+  // Hair/petals on head
+  for (let i = 0; i < 5; i++) {
+    const angle = (i / 5) * Math.PI * 2 - Math.PI/2;
+    const hx = Math.round(ox + 32 + Math.cos(angle) * 9);
+    const hy = Math.round(oy + 12 - bob + Math.sin(angle) * 9);
+    fillRect(ctx, hx-1, hy-1, 3, 3, p.fairyPink.highlight);
+  }
+
+  // Sparkles
+  const sparkles = [[10,8],[54,10],[20,40],[48,38],[32,48]];
+  sparkles.forEach(([sx,sy]) => {
+    if ((frame + sx) % 3 === 0) {
+      px(ctx, ox+sx, oy+sy, '#f8f0ff');
+    }
+  });
+
+  // Feet (tiny)
+  fillRect(ctx, ox+28, oy+40-bob, 3, 2, p.fairyPink.shadow);
+  fillRect(ctx, ox+33, oy+40-bob, 3, 2, p.fairyPink.shadow);
+}
+
+function drawEnemy_Bee(ctx, ox, oy, frame) {
+  const p = PAL;
+  const bob = frame === 0 ? 0 : -2;
+
+  // Wings (semi-transparent look)
+  const wingAngle = frame === 0 ? 0 : 6;
+  for (let wy = 0; wy < 16; wy++) {
+    const ww = Math.round(14 - Math.abs(wy - 8) * 1.8) + wingAngle;
+    if (ww > 0) {
+      fillRect(ctx, ox + 16 - ww, oy + 10 + wy + bob, ww, 1, p.beeWing.base);
+      fillRect(ctx, ox + 48, oy + 10 + wy + bob, ww, 1, p.beeWing.base);
+    }
+  }
+  // Wing outline
+  drawLine(ctx, ox+16, oy+10+bob, ox+4, oy+18+bob, p.beeWing.shadow);
+  drawLine(ctx, ox+48, oy+10+bob, ox+60, oy+18+bob, p.beeWing.shadow);
+
+  // Body (striped)
+  for (let by = 0; by < 24; by++) {
+    const bw = Math.round(10 - Math.abs(by - 12) * 0.7);
+    if (bw > 0) {
+      const stripe = Math.floor(by / 4) % 2 === 0 ? p.beeYellow.base : p.beeBlack.base;
+      fillRect(ctx, ox + 32 - bw, oy + 18 + by + bob, bw * 2, 1, stripe);
+    }
+  }
+  // Body highlight
+  drawEllipse(ctx, ox+30, oy+24+bob, 4, 4, p.beeYellow.highlight);
+
+  // Stinger
+  fillRect(ctx, ox+31, oy+42+bob, 2, 4, '#484848');
+  px(ctx, ox+31, oy+45+bob, '#f8f8f8');
+
+  // Head
+  drawCircle(ctx, ox+32, oy+16+bob, 7, p.beeYellow.base);
+  drawCircle(ctx, ox+32, oy+14+bob, 5, p.beeYellow.highlight);
+  // Eyes (compound, large)
+  fillRect(ctx, ox+27, oy+13+bob, 4, 5, '#800000');
+  fillRect(ctx, ox+33, oy+13+bob, 4, 5, '#800000');
+  px(ctx, ox+28, oy+14+bob, '#e84040');
+  px(ctx, ox+34, oy+14+bob, '#e84040');
+  // Antennae
+  drawLine(ctx, ox+29, oy+10+bob, ox+26, oy+4+bob, p.beeBlack.base);
+  drawLine(ctx, ox+35, oy+10+bob, ox+38, oy+4+bob, p.beeBlack.base);
+  px(ctx, ox+26, oy+4+bob, p.beeYellow.base);
+  px(ctx, ox+38, oy+4+bob, p.beeYellow.base);
+  // Mandibles
+  fillRect(ctx, ox+30, oy+22+bob, 1, 2, p.beeBlack.base);
+  fillRect(ctx, ox+33, oy+22+bob, 1, 2, p.beeBlack.base);
+
+  // Legs (6)
+  for (let leg = 0; leg < 3; leg++) {
+    const ly = oy + 26 + leg * 5 + bob;
+    drawLine(ctx, ox+24, ly, ox+20, ly+3, p.beeBlack.base);
+    drawLine(ctx, ox+40, ly, ox+44, ly+3, p.beeBlack.base);
+  }
+}
+
+function drawEnemy_Fox(ctx, ox, oy, frame) {
+  const p = PAL;
+  const bob = frame === 0 ? 0 : 1;
+
+  // Shadow
+  drawEllipse(ctx, ox+32, oy+58, 14, 3, rgba(0,0,0,0.3));
+
+  // Tail (big and fluffy)
+  const tailSwing = frame === 0 ? 0 : 3;
+  for (let ty = 0; ty < 28; ty++) {
+    const tw = Math.round(10 - Math.abs(ty - 14) * 0.6);
+    if (tw > 0) {
+      const tx = ox + 46 + tailSwing + Math.round(Math.sin(ty * 0.2) * 3);
+      const tc = ty < 20 ? p.foxOrange.base : p.foxWhite.base;
+      fillRect(ctx, tx, oy + 12 + ty + bob, tw, 1, tc);
+    }
+  }
+  // Tail highlight
+  for (let ty = 0; ty < 10; ty++) {
+    const tw = Math.max(1, 4 - Math.abs(ty-5));
+    fillRect(ctx, ox+48+tailSwing, oy+18+ty+bob, tw, 1, p.foxOrange.highlight);
+  }
+
+  // Body
+  drawEllipse(ctx, ox+30, oy+38+bob, 12, 8, p.foxOrange.base);
+  drawEllipse(ctx, ox+28, oy+36+bob, 6, 4, p.foxOrange.highlight);
+  // Belly
+  drawEllipse(ctx, ox+30, oy+40+bob, 8, 5, p.foxWhite.base);
+
+  // Legs
+  fillRect(ctx, ox+20, oy+44+bob, 4, 12, p.foxOrange.shadow);
+  fillRect(ctx, ox+26, oy+44+bob, 4, 12, p.foxOrange.shadow);
+  fillRect(ctx, ox+34, oy+44+bob, 4, 12, p.foxOrange.shadow);
+  fillRect(ctx, ox+40, oy+44+bob, 4, 10+(frame===0?2:0), p.foxOrange.shadow);
+  // Paws
+  fillRect(ctx, ox+20, oy+54+bob, 4, 3, p.foxWhite.base);
+  fillRect(ctx, ox+26, oy+54+bob, 4, 3, p.foxWhite.base);
+  fillRect(ctx, ox+34, oy+54+bob, 4, 3, p.foxWhite.base);
+  fillRect(ctx, ox+40, oy+52+bob+(frame===0?2:0), 4, 3, p.foxWhite.base);
+
+  // Head
+  drawEllipse(ctx, ox+22, oy+22+bob, 10, 8, p.foxOrange.base);
+  // Snout
+  drawEllipse(ctx, ox+16, oy+26+bob, 5, 4, p.foxOrange.highlight);
+  drawEllipse(ctx, ox+14, oy+27+bob, 3, 2, p.foxBlack ? '#181818' : '#181818');
+  // White face markings
+  drawEllipse(ctx, ox+20, oy+24+bob, 4, 3, p.foxWhite.base);
+  // Eyes
+  fillRect(ctx, ox+18, oy+20+bob, 3, 3, '#c84040');
+  px(ctx, ox+18, oy+20+bob, '#f88080');
+  fillRect(ctx, ox+24, oy+20+bob, 3, 3, '#c84040');
+  px(ctx, ox+24, oy+20+bob, '#f88080');
+  // Ears
+  for (let ey = 0; ey < 8; ey++) {
+    const ew = 5 - Math.floor(ey * 0.6);
+    fillRect(ctx, ox+14+Math.floor(ey*0.3), oy+14-ey+bob, ew, 1, p.foxOrange.base);
+    fillRect(ctx, ox+26, oy+14-ey+bob, ew, 1, p.foxOrange.base);
+  }
+  // Inner ear
+  fillRect(ctx, ox+16, oy+10+bob, 2, 3, p.foxOrange.highlight);
+  fillRect(ctx, ox+28, oy+10+bob, 2, 3, p.foxOrange.highlight);
+
+  // Whiskers
+  drawLine(ctx, ox+12, oy+24+bob, ox+6, oy+22+bob, '#c8c0b0');
+  drawLine(ctx, ox+12, oy+26+bob, ox+6, oy+27+bob, '#c8c0b0');
+}
+
+function drawEnemy_Boss(ctx, ox, oy, frame) {
+  // Flower Guardian boss, 128x128
+  const p = PAL;
+  const bob = frame === 0 ? 0 : -2;
+  const breathe = frame === 0 ? 0 : 1;
+
+  // Aura glow
+  for (let r = 50; r > 30; r -= 2) {
+    drawCircle(ctx, ox+64, oy+64+bob, r, rgba(248,192,216, 0.03));
+  }
+
+  // Root/vine base
+  for (let v = 0; v < 5; v++) {
+    const vx = ox + 20 + v * 20;
+    for (let vy = 0; vy < 30; vy++) {
+      const vw = 4 - Math.abs(vy-15)*0.2;
+      if (vw > 0) {
+        fillRect(ctx, vx + Math.round(Math.sin(vy*0.3)*4), oy+90+vy+bob, Math.round(vw), 1,
+          vy < 10 ? p.bossGreen.base : p.bossGreen.shadow);
+      }
+    }
+  }
+
+  // Main body (tree trunk-like)
+  for (let by = 0; by < 50; by++) {
+    const bw = Math.round(20 + breathe*2 - Math.abs(by-25)*0.4);
+    const bc = by < 15 ? p.bossGreen.highlight : by < 35 ? p.bossGreen.base : p.bossGreen.shadow;
+    fillRect(ctx, ox+64-bw, oy+40+by+bob, bw*2, 1, bc);
+  }
+
+  // Bark texture
+  for (let t = 0; t < 8; t++) {
+    const tx = ox + 50 + Math.floor(Math.random() * 28);
+    const ty = oy + 45 + t * 6 + bob;
+    fillRect(ctx, tx, ty, 3, 2, darken(p.bossGreen.base, 15));
+  }
+
+  // Petal crown (large sakura petals around head)
+  const petalAngles = [0, 72, 144, 216, 288];
+  petalAngles.forEach((angle, i) => {
+    const rad = (angle + (frame === 0 ? 0 : 10)) * Math.PI / 180;
+    const petalR = 24 + breathe;
+    const pcx = Math.round(ox + 64 + Math.cos(rad) * petalR);
+    const pcy = Math.round(oy + 30 + bob + Math.sin(rad) * petalR * 0.7);
+    // Each petal
+    for (let py = -6; py <= 6; py++) {
+      const pw = Math.round(8 - Math.abs(py) * 1.2);
+      if (pw > 0) {
+        const pc = py < -2 ? p.bossPetal.highlight : py < 2 ? p.bossPetal.base : p.bossPetal.shadow;
+        fillRect(ctx, pcx - pw, pcy + py, pw * 2, 1, pc);
+      }
+    }
+  });
+
+  // Face area
+  drawCircle(ctx, ox+64, oy+34+bob, 14, p.bossGreen.highlight);
+  drawCircle(ctx, ox+64, oy+34+bob, 12, lighten(p.bossGreen.highlight, 10));
+
+  // Eyes (ancient, glowing)
+  fillRect(ctx, ox+56, oy+30+bob, 5, 6, '#40c868');
+  fillRect(ctx, ox+67, oy+30+bob, 5, 6, '#40c868');
+  // Eye glow
+  fillRect(ctx, ox+57, oy+31+bob, 3, 4, '#88f8a8');
+  fillRect(ctx, ox+68, oy+31+bob, 3, 4, '#88f8a8');
+  // Pupils
+  fillRect(ctx, ox+58, oy+32+bob, 1, 2, '#185028');
+  fillRect(ctx, ox+69, oy+32+bob, 1, 2, '#185028');
+
+  // Mouth (serene)
+  fillRect(ctx, ox+60, oy+39+bob, 8, 1, p.bossGreen.shadow);
+  fillRect(ctx, ox+61, oy+40+bob, 6, 1, darken(p.bossGreen.shadow, 10));
+
+  // Branch arms
+  for (let side of [-1, 1]) {
+    const armX = ox + 64 + side * 30;
+    for (let ay = 0; ay < 20; ay++) {
+      const aw = Math.max(1, 5 - ay * 0.2);
+      fillRect(ctx, armX - (side > 0 ? 0 : aw) + Math.round(Math.sin(ay*0.3)*2),
+        oy + 42 + ay + bob, Math.round(aw), 1, p.bossGreen.shadow);
+    }
+    // Leaves on branches
+    for (let l = 0; l < 4; l++) {
+      const lx = armX + side * (l * 4) + Math.round(Math.sin(l)*2);
+      const ly = oy + 45 + l * 5 + bob;
+      fillRect(ctx, lx-2, ly-1, 4, 3, p.leaf.base);
+      px(ctx, lx-1, ly-1, p.leaf.highlight);
+    }
+  }
+
+  // Floating sakura petals around boss
+  const floatPetals = [[14,20],[100,25],[8,70],[110,65],[30,10],[90,8]];
+  floatPetals.forEach(([fpx,fpy], i) => {
+    if ((frame + i) % 2 === 0) {
+      fillRect(ctx, ox+fpx, oy+fpy+bob, 3, 2, p.bossPetal.highlight);
+      px(ctx, ox+fpx+1, oy+fpy+bob, '#fff0f8');
+    }
+  });
+}
+
+function generateEnemies() {
+  setProgress('敵スプライトを生成中...');
+  let ctx;
+
+  ctx = getScaledCtx('enemy-fairy', 128, 64);
+  drawEnemy_Fairy(ctx, 0, 0, 0);
+  drawEnemy_Fairy(ctx, 64, 0, 1);
+  log('Enemy: Flower Fairy generated (64x64, 2 frames)');
+
+  ctx = getScaledCtx('enemy-bee', 128, 64);
+  drawEnemy_Bee(ctx, 0, 0, 0);
+  drawEnemy_Bee(ctx, 64, 0, 1);
+  log('Enemy: Flower Bee generated (64x64, 2 frames)');
+
+  ctx = getScaledCtx('enemy-fox', 128, 64);
+  drawEnemy_Fox(ctx, 0, 0, 0);
+  drawEnemy_Fox(ctx, 64, 0, 1);
+  log('Enemy: Mist Fox generated (64x64, 2 frames)');
+
+  ctx = getScaledCtx('enemy-boss', 256, 128);
+  drawEnemy_Boss(ctx, 0, 0, 0);
+  drawEnemy_Boss(ctx, 128, 0, 1);
+  log('Enemy: Flower Guardian Boss generated (128x128, 2 frames)');
+
+  setProgress('敵スプライト 完了');
+}
+
+// ============================================================
+// DECORATIONS
+// ============================================================
+function drawDeco_Fountain(ctx, ox, oy) {
+  const p = PAL;
+  // Base (stone circle, top-down perspective)
+  drawEllipse(ctx, ox+32, oy+48, 26, 12, p.stone.shadow);
+  drawEllipse(ctx, ox+32, oy+46, 26, 12, p.stone.base);
+  drawEllipse(ctx, ox+32, oy+44, 26, 12, p.stone.highlight);
+  // Water surface
+  drawEllipse(ctx, ox+32, oy+46, 22, 9, p.water.base);
+  drawEllipse(ctx, ox+32, oy+44, 18, 7, p.water.highlight);
+  // Water sparkles
+  px(ctx, ox+24, oy+42, '#c8e8f8');
+  px(ctx, ox+38, oy+40, '#c8e8f8');
+  px(ctx, ox+30, oy+38, '#e8f8ff');
+
+  // Center pillar
+  fillRect(ctx, ox+28, oy+16, 8, 30, p.stone.base);
+  fillRect(ctx, ox+28, oy+16, 8, 2, p.stone.highlight);
+  fillRect(ctx, ox+28, oy+16, 2, 30, p.stone.highlight);
+  fillRect(ctx, ox+34, oy+16, 2, 30, p.stone.shadow);
+
+  // Top basin
+  shadedRect(ctx, ox+24, oy+14, 16, 4, p.stone);
+  fillRect(ctx, ox+26, oy+14, 12, 2, p.water.highlight);
+
+  // Water streams (falling)
+  for (let s of [-1, 1]) {
+    const sx = ox + 32 + s * 8;
+    for (let sy = 0; sy < 14; sy++) {
+      if ((sy + Math.abs(s)) % 3 < 2) {
+        px(ctx, sx + Math.round(Math.sin(sy*0.5)*s), oy+18+sy, p.water.highlight);
+      }
+    }
+  }
+  // Spray at top
+  for (let sy = 0; sy < 10; sy++) {
+    if (sy % 2 === 0) {
+      px(ctx, ox+31+Math.round(Math.sin(sy)*2), oy+4+sy, p.water.highlight);
+      px(ctx, ox+33+Math.round(Math.cos(sy)*2), oy+4+sy, p.water.base);
+    }
+  }
+  px(ctx, ox+32, oy+3, '#e8f8ff');
+}
+
+function drawDeco_Flowerbed(ctx, ox, oy) {
+  // Stone border
+  shadedRect(ctx, ox, oy+20, 32, 12, PAL.stone);
+  // Dirt
+  fillRect(ctx, ox+2, oy+14, 28, 8, '#8B7355');
+  fillRect(ctx, ox+3, oy+15, 26, 6, '#7A6248');
+  // Flowers (various)
+  const flowers = [
+    [4, 10, PAL.flower_pink], [10, 8, PAL.flower_white],
+    [16, 11, PAL.sakura], [22, 9, PAL.flower_pink],
+    [7, 13, PAL.flower_white], [19, 13, PAL.sakura],
+    [13, 12, PAL.flower_pink], [25, 11, PAL.flower_white]
+  ];
+  flowers.forEach(([fx, fy, fc]) => {
+    // Stem
+    fillRect(ctx, ox+fx+1, oy+fy+2, 1, 4, PAL.leaf.base);
+    // Leaves
+    px(ctx, ox+fx, oy+fy+3, PAL.leaf.base);
+    px(ctx, ox+fx+2, oy+fy+4, PAL.leaf.base);
+    // Petals
+    px(ctx, ox+fx, oy+fy, fc.base);
+    px(ctx, ox+fx+2, oy+fy, fc.base);
+    px(ctx, ox+fx+1, oy+fy-1, fc.highlight);
+    px(ctx, ox+fx+1, oy+fy+1, fc.shadow);
+    px(ctx, ox+fx+1, oy+fy, '#f8f080'); // center
+  });
+}
+
+function drawDeco_StreetLamp(ctx, ox, oy) {
+  const p = PAL;
+  // Base plate
+  shadedRect(ctx, ox+4, oy+42, 8, 4, p.metal);
+  fillRect(ctx, ox+5, oy+44, 6, 2, p.metal.shadow);
+
+  // Pole
+  fillRect(ctx, ox+7, oy+10, 2, 32, p.metal.base);
+  fillRect(ctx, ox+7, oy+10, 1, 32, p.metal.highlight);
+  fillRect(ctx, ox+8, oy+10, 1, 32, p.metal.shadow);
+
+  // Decorative ring
+  fillRect(ctx, ox+6, oy+14, 4, 2, p.metalGold.base);
+  fillRect(ctx, ox+6, oy+38, 4, 2, p.metalGold.base);
+
+  // Lamp housing
+  shadedRect(ctx, ox+3, oy+4, 10, 8, p.metal);
+  // Glass
+  fillRect(ctx, ox+4, oy+5, 8, 6, '#f8e880');
+  fillRect(ctx, ox+5, oy+5, 6, 3, '#f8f0b0');
+  // Glow effect
+  drawCircle(ctx, ox+8, oy+7, 3, rgba(248, 232, 128, 0.3));
+
+  // Top cap
+  fillRect(ctx, ox+5, oy+2, 6, 3, p.metal.base);
+  fillRect(ctx, ox+6, oy+1, 4, 2, p.metal.highlight);
+  px(ctx, ox+7, oy, p.metal.highlight);
+  px(ctx, ox+8, oy, p.metal.highlight);
+}
+
+function drawDeco_SakuraTree(ctx, ox, oy) {
+  const p = PAL;
+
+  // Shadow on ground
+  drawEllipse(ctx, ox+32, oy+90, 24, 5, rgba(0,0,0,0.2));
+
+  // Trunk
+  for (let ty = 0; ty < 40; ty++) {
+    const tw = Math.round(6 - ty * 0.08);
+    const tc = ty < 10 ? p.trunk.shadow : ty < 30 ? p.trunk.base : p.trunk.highlight;
+    fillRect(ctx, ox+30-tw, oy+50+ty, tw*2, 1, tc);
+  }
+  // Bark texture
+  for (let bt = 0; bt < 5; bt++) {
+    fillRect(ctx, ox+27, oy+55+bt*7, 6, 1, darken(p.trunk.base, 12));
+  }
+
+  // Branches
+  const branches = [
+    [-18, -10, -30, -20], [18, -10, 30, -20],
+    [-22, -5, -28, -15], [22, -5, 28, -15],
+    [-10, -18, -15, -30], [10, -18, 15, -30],
+    [0, -22, 0, -35]
+  ];
+  branches.forEach(([sx, sy, ex, ey]) => {
+    drawLine(ctx, ox+32+sx, oy+50+sy, ox+32+ex, oy+50+ey, p.trunk.base);
+  });
+
+  // Canopy (sakura blossoms - large cloud shape)
+  const canopyParts = [
+    [32, 22, 22, 14], [18, 28, 14, 10], [46, 28, 14, 10],
+    [26, 14, 16, 10], [38, 14, 16, 10],
+    [32, 10, 12, 8], [22, 18, 12, 8], [42, 18, 12, 8]
+  ];
+  canopyParts.forEach(([cx, cy, rx, ry]) => {
+    drawEllipse(ctx, ox+cx, oy+cy, rx, ry, p.sakura.base);
+  });
+  // Highlight layer
+  const hlParts = [
+    [30, 18, 16, 10], [20, 24, 10, 7], [44, 24, 10, 7],
+    [32, 8, 10, 6]
+  ];
+  hlParts.forEach(([cx, cy, rx, ry]) => {
+    drawEllipse(ctx, ox+cx, oy+cy, rx, ry, p.sakura.highlight);
+  });
+  // Shadow layer
+  const shParts = [
+    [32, 32, 18, 6], [20, 34, 10, 4], [44, 34, 10, 4]
+  ];
+  shParts.forEach(([cx, cy, rx, ry]) => {
+    drawEllipse(ctx, ox+cx, oy+cy, rx, ry, p.sakura.shadow);
+  });
+
+  // Individual blossom details
+  for (let b = 0; b < 30; b++) {
+    const bx = ox + 10 + Math.floor(Math.random() * 44);
+    const by = oy + 4 + Math.floor(Math.random() * 34);
+    // Check roughly within canopy
+    const dx = bx - (ox+32), dy = by - (oy+22);
+    if (dx*dx/600 + dy*dy/250 < 1) {
+      const bc = Math.random() > 0.5 ? p.sakura.highlight : '#fff0f0';
+      px(ctx, bx, by, bc);
+      px(ctx, bx+1, by, p.sakura.base);
+    }
+  }
+
+  // Falling petals
+  const petals = [[4,50],[52,45],[10,65],[56,70],[30,80]];
+  petals.forEach(([fpx,fpy]) => {
+    fillRect(ctx, ox+fpx, oy+fpy, 2, 1, p.sakura.highlight);
+    px(ctx, ox+fpx+1, oy+fpy+1, p.sakura.base);
+  });
+
+  // Root detail at base
+  fillRect(ctx, ox+22, oy+86, 4, 4, p.trunk.shadow);
+  fillRect(ctx, ox+36, oy+87, 5, 3, p.trunk.shadow);
+}
+
+function drawDeco_Barrel(ctx, ox, oy) {
+  const p = PAL.wood;
+  // Body
+  for (let by = 0; by < 14; by++) {
+    const bw = Math.round(6 + Math.sin(by / 14 * Math.PI) * 2);
+    const bc = by < 4 ? p.highlight : by < 10 ? p.base : p.shadow;
+    fillRect(ctx, ox + 8 - bw, oy + 1 + by, bw * 2, 1, bc);
+  }
+  // Metal bands
+  fillRect(ctx, ox+3, oy+3, 10, 1, PAL.metal.base);
+  fillRect(ctx, ox+3, oy+3, 10, 1, PAL.metal.highlight);
+  fillRect(ctx, ox+3, oy+11, 10, 1, PAL.metal.base);
+  // Top
+  drawEllipse(ctx, ox+8, oy+1, 5, 2, lighten(p.base, 10));
+  // Wood grain
+  fillRect(ctx, ox+5, oy+4, 1, 7, darken(p.base, 8));
+  fillRect(ctx, ox+8, oy+3, 1, 8, darken(p.base, 8));
+  fillRect(ctx, ox+11, oy+4, 1, 7, darken(p.base, 8));
+  // Outline
+  px(ctx, ox+8, oy, p.outline);
+}
+
+function drawDeco_Crate(ctx, ox, oy) {
+  const p = PAL.wood;
+  // Body
+  shadedRect(ctx, ox+1, oy+2, 14, 13, p);
+  // Planks (horizontal)
+  for (let plank = 0; plank < 3; plank++) {
+    const py = oy + 3 + plank * 4;
+    fillRect(ctx, ox+2, py, 12, 3, colorVariation(p.base, 6));
+    fillRect(ctx, ox+2, py, 12, 1, lighten(p.base, 8));
+    fillRect(ctx, ox+1, py+3, 14, 1, p.outline);
+  }
+  // Cross braces
+  fillRect(ctx, ox+3, oy+3, 2, 11, darken(p.base, 10));
+  fillRect(ctx, ox+11, oy+3, 2, 11, darken(p.base, 10));
+  // Top edge
+  fillRect(ctx, ox+1, oy+1, 14, 2, lighten(p.base, 12));
+  // Nails
+  px(ctx, ox+4, oy+4, PAL.metal.base);
+  px(ctx, ox+12, oy+4, PAL.metal.base);
+  px(ctx, ox+4, oy+12, PAL.metal.base);
+  px(ctx, ox+12, oy+12, PAL.metal.base);
+}
+
+function generateDecorations() {
+  setProgress('装飾オブジェクトを生成中...');
+
+  let ctx;
+  ctx = getScaledCtx('deco-fountain', 64, 64);
+  drawDeco_Fountain(ctx, 0, 0);
+  log('Decoration: Fountain generated (64x64)');
+
+  ctx = getScaledCtx('deco-flowerbed', 32, 32);
+  drawDeco_Flowerbed(ctx, 0, 0);
+  log('Decoration: Flowerbed generated (32x32)');
+
+  ctx = getScaledCtx('deco-lamp', 16, 48);
+  drawDeco_StreetLamp(ctx, 0, 0);
+  log('Decoration: Street Lamp generated (16x48)');
+
+  ctx = getScaledCtx('deco-sakura', 64, 96);
+  drawDeco_SakuraTree(ctx, 0, 0);
+  log('Decoration: Sakura Tree generated (64x96)');
+
+  ctx = getScaledCtx('deco-barrel', 16, 16);
+  drawDeco_Barrel(ctx, 0, 0);
+  log('Decoration: Barrel generated (16x16)');
+
+  ctx = getScaledCtx('deco-crate', 16, 16);
+  drawDeco_Crate(ctx, 0, 0);
+  log('Decoration: Crate generated (16x16)');
+
+  setProgress('装飾オブジェクト 完了');
+}
+
+// ============================================================
+// GENERATE ALL
+// ============================================================
+function generateCharacters() {
+  setProgress('キャラクターを生成中...');
+  generateHero();
+  generateHealer();
+  setProgress('キャラクター 完了');
+}
+
+function generateTiles() {
+  setProgress('タイルセットを生成中...');
+  generateTilesCobbleFixed();
+  generateTilesWall();
+  setProgress('タイルセット 完了');
+}
+
+function generateAll() {
+  log('=== 全アセット生成開始 ===');
+  setProgress('生成中...');
+  setTimeout(() => {
+    generateCharacters();
+    setTimeout(() => {
+      generateTiles();
+      setTimeout(() => {
+        generateBuildings();
+        setTimeout(() => {
+          generateEnemies();
+          setTimeout(() => {
+            generateDecorations();
+            log('=== 全アセット生成完了 ===');
+            setProgress('全アセット生成完了!');
+          }, 50);
+        }, 50);
+      }, 50);
+    }, 50);
+  }, 50);
+}
+
+// ============================================================
+// DOWNLOAD
+// ============================================================
+function downloadCanvas(canvasId, filename, nativeScale) {
+  const canvas = document.getElementById(canvasId);
+  // Create a native-resolution canvas for export
+  const nativeW = Math.round(canvas.width / (canvas.width / (canvas.width / (nativeScale || 1))));
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+function getNativeCanvas(canvasId, nativeW, nativeH) {
+  const srcCanvas = document.getElementById(canvasId);
+  const dst = document.createElement('canvas');
+  dst.width = nativeW;
+  dst.height = nativeH;
+  const dctx = dst.getContext('2d');
+  dctx.imageSmoothingEnabled = false;
+  dctx.drawImage(srcCanvas, 0, 0, nativeW, nativeH);
+  return dst;
+}
+
+async function downloadAllZip() {
+  setProgress('ZIPファイルを準備中... (JSZipが必要です)');
+
+  // Dynamically load JSZip if not present
+  if (typeof JSZip === 'undefined') {
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    document.head.appendChild(script);
+    await new Promise((resolve, reject) => {
+      script.onload = resolve;
+      script.onerror = () => reject(new Error('JSZip load failed'));
+    });
+  }
+
+  const zip = new JSZip();
+  const assets = zip.folder('assets');
+  const chars = assets.folder('characters');
+  const tiles = assets.folder('tiles');
+  const buildings = assets.folder('buildings');
+  const enemies = assets.folder('enemies');
+  const decos = assets.folder('decorations');
+
+  function addCanvasToZip(folder, canvasId, filename, nativeW, nativeH) {
+    const native = getNativeCanvas(canvasId, nativeW, nativeH);
+    const dataUrl = native.toDataURL('image/png');
+    const base64 = dataUrl.split(',')[1];
+    folder.file(filename, base64, { base64: true });
+  }
+
+  addCanvasToZip(chars, 'hero-preview', 'hero_spritesheet.png', 96, 192);
+  addCanvasToZip(chars, 'healer-preview', 'healer_spritesheet.png', 96, 192);
+  addCanvasToZip(tiles, 'tiles-cobble', 'tiles_cobblestone.png', 256, 128);
+  addCanvasToZip(tiles, 'tiles-wall', 'tiles_wall.png', 192, 64);
+  addCanvasToZip(buildings, 'building-house', 'building_house.png', 128, 96);
+  addCanvasToZip(buildings, 'building-inn', 'building_inn.png', 128, 128);
+  addCanvasToZip(buildings, 'building-shop', 'building_shop.png', 96, 96);
+  addCanvasToZip(buildings, 'building-guild', 'building_guild.png', 128, 128);
+  addCanvasToZip(enemies, 'enemy-fairy', 'enemy_fairy.png', 128, 64);
+  addCanvasToZip(enemies, 'enemy-bee', 'enemy_bee.png', 128, 64);
+  addCanvasToZip(enemies, 'enemy-fox', 'enemy_fox.png', 128, 64);
+  addCanvasToZip(enemies, 'enemy-boss', 'enemy_boss.png', 256, 128);
+  addCanvasToZip(decos, 'deco-fountain', 'deco_fountain.png', 64, 64);
+  addCanvasToZip(decos, 'deco-flowerbed', 'deco_flowerbed.png', 32, 32);
+  addCanvasToZip(decos, 'deco-lamp', 'deco_streetlamp.png', 16, 48);
+  addCanvasToZip(decos, 'deco-sakura', 'deco_sakura_tree.png', 64, 96);
+  addCanvasToZip(decos, 'deco-barrel', 'deco_barrel.png', 16, 16);
+  addCanvasToZip(decos, 'deco-crate', 'deco_crate.png', 16, 16);
+
+  const blob = await zip.generateAsync({ type: 'blob' });
+  const link = document.createElement('a');
+  link.download = 'shiki_meguri_assets.zip';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
+  setProgress('ZIPダウンロード完了!');
+  log('ZIP file downloaded: shiki_meguri_assets.zip');
+}
+
+// Auto-generate on load
+window.addEventListener('load', () => {
+  log('HD-2D Asset Generator ready.');
+  log('「全アセット生成」ボタンを押してください。');
+});
+</script>
+
+</body>
+</html>
