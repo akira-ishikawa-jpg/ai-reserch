@@ -48,6 +48,15 @@ window.addEventListener('DOMContentLoaded', () => {
     // Debug access
     window.game = game;
 
+    // Debug: verify canvas is drawing
+    console.log('[Debug] Canvas size:', game.canvas.width, 'x', game.canvas.height);
+    console.log('[Debug] Current scene:', game.scenes.currentScene);
+    console.log('[Debug] Renderer ctx:', !!game.renderer.ctx);
+    // Force a test draw to verify canvas works
+    game.renderer.ctx.fillStyle = '#FF0000';
+    game.renderer.ctx.fillRect(0, 0, 100, 100);
+    console.log('[Debug] Test red square drawn at (0,0)');
+
   } catch (e) {
     // Show error on screen for debugging
     document.body.style.background = '#200';
