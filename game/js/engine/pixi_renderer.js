@@ -303,6 +303,7 @@ class PixiRenderer {
       // エラー時は無効化してCanvas 2Dにフォールバック
       console.warn('[PixiRenderer] Post-process error, disabling:', e.message);
       this.enabled = false;
+      this._hidePixiCanvas();
     }
   }
 
@@ -349,6 +350,16 @@ class PixiRenderer {
    */
   isEnabled() {
     return this.enabled;
+  }
+
+  /**
+   * PixiCanvasを非表示にする（フォールバック時）
+   */
+  _hidePixiCanvas() {
+    const pixiCanvas = document.getElementById('pixi-canvas');
+    if (pixiCanvas) {
+      pixiCanvas.style.display = 'none';
+    }
   }
 
   /**
