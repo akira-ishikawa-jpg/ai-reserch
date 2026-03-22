@@ -822,11 +822,8 @@ class ExplorationScene extends Scene {
     const colors = map.tileColors;
     const seasonColors = SEASON_COLORS[map.season] || SEASON_COLORS[SEASON.SPRING];
 
-    // DEBUG: Force visible background
+    // 1. 背景
     renderer.ctx.globalAlpha = 1;
-    renderer.clear(seasonColors.bg || '#FFF0F5');
-
-    // 1. 背景グラデーション（季節に応じた上下グラデーション）
     renderer.drawGradientRect(0, 0, GAME_WIDTH, GAME_HEIGHT, seasonColors.bg, seasonColors.secondary);
 
     // 2. パーティクル（背景レイヤー）
