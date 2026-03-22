@@ -18,7 +18,7 @@ func _on_new_game():
 	GameState.party = []
 	GameState.flags = {}
 	GameState.gold = 100
-	GameState.current_season = 0
+	GameState.current_season = "spring"
 	GameState.day_count = 1
 	GameState.play_time = 0.0
 

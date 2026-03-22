@@ -2,7 +2,7 @@ extends Node
 ## ゲーム全体の状態管理（Autoloadシングルトン）
 ## GameState としてどこからでもアクセス可能
 
-class_name GameState
+# Autoloadシングルトンなのでclass_nameは不要（project.godotで"GameState"として登録済み）
 
 # ==========================================
 # 季節定数

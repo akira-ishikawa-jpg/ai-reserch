@@ -20,19 +20,19 @@ func _setup_season_lighting():
 	var omni_light = $OmniLight3D
 
 	match GameState.current_season:
-		0:  # 春
+		"spring":
 			dir_light.light_color = Color(1.0, 0.98, 0.92)
 			dir_light.light_energy = 1.2
 			omni_light.light_color = Color(1.0, 0.85, 0.6)
-		1:  # 夏
+		"summer":
 			dir_light.light_color = Color(1.0, 1.0, 0.95)
 			dir_light.light_energy = 1.5
 			omni_light.light_color = Color(1.0, 0.9, 0.7)
-		2:  # 秋
+		"autumn":
 			dir_light.light_color = Color(1.0, 0.9, 0.75)
 			dir_light.light_energy = 1.0
 			omni_light.light_color = Color(1.0, 0.7, 0.4)
-		3:  # 冬
+		"winter":
 			dir_light.light_color = Color(0.85, 0.9, 1.0)
 			dir_light.light_energy = 0.8
 			omni_light.light_color = Color(0.8, 0.85, 1.0)

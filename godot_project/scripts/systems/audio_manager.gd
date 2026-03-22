@@ -2,6 +2,8 @@ extends Node
 ## BGM/SE統合管理システム（Autoload）
 ## クロスフェード付きBGM切り替え、複数同時再生SE、音量制御を提供する
 
+const MusicGeneratorClass = preload("res://scripts/systems/music_generator.gd")
+
 # =============================================================================
 # 設定
 # =============================================================================
@@ -100,14 +102,14 @@ func _pregenerate_audio():
 	# BGM全曲を生成
 	print("[AudioManager] BGM生成開始...")
 	var bgm_start := Time.get_ticks_msec()
-	_bgm_cache = MusicGenerator.generate_all_bgm()
+	_bgm_cache = MusicGeneratorClass.generate_all_bgm()
 	var bgm_time := Time.get_ticks_msec() - bgm_start
 	print("[AudioManager] BGM生成完了: %d曲 (%dms)" % [_bgm_cache.size(), bgm_time])
 
 	# SE全種を生成
 	print("[AudioManager] SE生成開始...")
 	var se_start := Time.get_ticks_msec()
-	_se_cache = MusicGenerator.generate_all_se()
+	_se_cache = MusicGeneratorClass.generate_all_se()
 	var se_time := Time.get_ticks_msec() - se_start
 	print("[AudioManager] SE生成完了: %d種 (%dms)" % [_se_cache.size(), se_time])
 
@@ -305,13 +307,13 @@ func clear_cache() -> void:
 ## 特定のBGMだけを事前生成
 func pregenerate_bgm(bgm_name: String) -> void:
 	if not _bgm_cache.has(bgm_name):
-		_bgm_cache[bgm_name] = MusicGenerator.generate_bgm(bgm_name)
+		_bgm_cache[bgm_name] = MusicGeneratorClass.generate_bgm(bgm_name)
 
 
 ## 特定のSEだけを事前生成
 func pregenerate_se(se_name: String) -> void:
 	if not _se_cache.has(se_name):
-		_se_cache[se_name] = MusicGenerator.generate_se(se_name)
+		_se_cache[se_name] = MusicGeneratorClass.generate_se(se_name)
 
 
 # =============================================================================
@@ -322,7 +324,7 @@ func _get_bgm_stream(bgm_name: String) -> AudioStreamWAV:
 	if _bgm_cache.has(bgm_name):
 		return _bgm_cache[bgm_name]
 	# オンデマンド生成
-	var stream := MusicGenerator.generate_bgm(bgm_name)
+	var stream: AudioStreamWAV = MusicGeneratorClass.generate_bgm(bgm_name)
 	_bgm_cache[bgm_name] = stream
 	return stream
 
@@ -331,7 +333,7 @@ func _get_se_stream(se_name: String) -> AudioStreamWAV:
 	if _se_cache.has(se_name):
 		return _se_cache[se_name]
 	# オンデマンド生成
-	var stream := MusicGenerator.generate_se(se_name)
+	var stream: AudioStreamWAV = MusicGeneratorClass.generate_se(se_name)
 	_se_cache[se_name] = stream
 	return stream
 
