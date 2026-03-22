@@ -58,7 +58,8 @@ class BattleScene extends Scene {
   // ============ Scene lifecycle ============
 
   enter(data) {
-    this.background = data.background || SEASON.SPRING;
+    this.bgColor = data.background || '#FFF0F5';
+    this.background = data.season || SEASON.SPRING;
 
     // Create BattleUnits from party
     const partyMembers = this.game.state.party.getActiveMembers();
@@ -211,19 +212,20 @@ class BattleScene extends Scene {
   // ============ Turn flow ============
 
   _beginNextUnitAction() {
+    // Check battle end first
+    if (this.engine.phase === 'victory' || this.engine.phase === 'defeat') {
+      this._onMessagesComplete();
+      return;
+    }
+
     const unit = this.engine.currentUnit;
     if (!unit) {
       // turn is over
       if (this.engine.phase === 'turnEnd') {
         this.engine.endTurn();
         this.engine.startTurn();
+        this._beginNextUnitAction();
       }
-      this._beginNextUnitAction();
-      return;
-    }
-
-    if (this.engine.phase === 'victory' || this.engine.phase === 'defeat') {
-      this._onMessagesComplete();
       return;
     }
 
@@ -702,7 +704,7 @@ class BattleScene extends Scene {
   // ---- Background ----
 
   _drawBackground(renderer) {
-    const colors = SEASON_COLORS[this.background];
+    const colors = SEASON_COLORS[this.background] || SEASON_COLORS[SEASON.SPRING];
     // Gradient-like layers
     renderer.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT, colors.bg);
     renderer.drawRect(0, 0, GAME_WIDTH, 80, colors.secondary, 0.3);

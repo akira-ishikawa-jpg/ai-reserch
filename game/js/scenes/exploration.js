@@ -513,6 +513,7 @@ class ExplorationScene extends Scene {
     this.game.scenes.push(SCENES.BATTLE, {
       enemies: enemies,
       background: seasonColors.bg,
+      season: this.currentMap.season,
       isBoss: enemySymbol.isBoss,
     });
   }

@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "FastAPI Backend",
+      "runtimeExecutable": "uvicorn",
+      "runtimeArgs": ["app.main:app", "--reload", "--port", "8000"],
+      "port": 8000
+    },
+    {
+      "name": "Streamlit Frontend",
+      "runtimeExecutable": "streamlit",
+      "runtimeArgs": ["run", "frontend/app.py", "--server.port", "8501"],
+      "port": 8501
+    }
+  ]
+}
