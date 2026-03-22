@@ -445,6 +445,29 @@ class Renderer {
     return Math.abs(this.fadeAlpha - this.fadeTarget) > 0.01;
   }
 
+  // Point light (additive blending)
+  drawPointLight(x, y, radius, color, intensity) {
+    const ctx = this.ctx;
+    // Parse color string (accepts '#RRGGBB' or 'rgb(r,g,b)')
+    let r = 255, g = 200, b = 150;
+    if (color && color.startsWith('#')) {
+      const h = color.slice(1);
+      r = parseInt(h.substring(0, 2), 16);
+      g = parseInt(h.substring(2, 4), 16);
+      b = parseInt(h.substring(4, 6), 16);
+    }
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+    grad.addColorStop(0, `rgba(${r},${g},${b},${intensity})`);
+    grad.addColorStop(0.4, `rgba(${r},${g},${b},${intensity * 0.5})`);
+    grad.addColorStop(0.7, `rgba(${r},${g},${b},${intensity * 0.15})`);
+    grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(x - radius, y - radius, radius * 2, radius * 2);
+    ctx.restore();
+  }
+
   // Screen shake
   applyShake() {
     if (this.screenShake > 0) {

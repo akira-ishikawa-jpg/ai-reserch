@@ -2,6 +2,7 @@
 const GAME_WIDTH = 960;
 const GAME_HEIGHT = 540;
 const TILE_SIZE = 32;
+const TILE_RENDER_H = 24; // 3/4パースペクティブ用: 描画時のタイル高さ (Y軸75%圧縮)
 const FPS = 60;
 
 // Seasons

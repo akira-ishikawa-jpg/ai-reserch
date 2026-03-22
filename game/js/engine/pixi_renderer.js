@@ -23,6 +23,10 @@ class PixiRenderer {
     this._dofBottomMaskSprite = null;
     this._dofContainer = null;
 
+    // カラーグレーディング用
+    this._colorGradingFilter = null;
+    this.colorGradingEnabled = true;
+
     // エフェクトON/OFFフラグ
     this.vignetteEnabled = true;
     this.seasonTintEnabled = true;
@@ -102,6 +106,15 @@ class PixiRenderer {
       this._createVignetteLayer();
       this._createSeasonTintLayer();
       this._createEdgeGlowLayer();
+
+      // カラーグレーディングレイヤー（暖色寄せ）
+      try {
+        this._createColorGradingLayer();
+        console.log('[PixiRenderer] Color grading layer created.');
+      } catch (cgErr) {
+        console.warn('[PixiRenderer] Color grading initialization failed:', cgErr.message);
+        this.colorGradingEnabled = false;
+      }
 
       // DOF（被写界深度）レイヤーを構築
       try {
@@ -201,6 +214,54 @@ class PixiRenderer {
     this._edgeGlowSprite = new PIXI.Sprite(this._edgeGlowTexture);
     this._edgeGlowSprite.blendMode = PIXI.BLEND_MODES.ADD;
     this.effectContainer.addChild(this._edgeGlowSprite);
+  }
+
+  /**
+   * カラーグレーディングレイヤー — 暖かい色温度のオーバーレイ
+   * Canvas 2Dで暖色のソフトオーバーレイを描画し、PIXI.Spriteとして配置
+   * ColorMatrixFilterが利用可能ならそちらを使用
+   */
+  _createColorGradingLayer() {
+    // オフスクリーンCanvasで暖色グラデーションを作成
+    const cgCanvas = document.createElement('canvas');
+    cgCanvas.width = GAME_WIDTH;
+    cgCanvas.height = GAME_HEIGHT;
+    const cgCtx = cgCanvas.getContext('2d');
+
+    // 画面中央から放射する暖色グロー
+    const cx = GAME_WIDTH / 2;
+    const cy = GAME_HEIGHT / 2;
+    const outerR = Math.sqrt(cx * cx + cy * cy);
+
+    // 暖色の放射グラデーション（中央は目立たず、全体にうっすら）
+    const grad = cgCtx.createRadialGradient(cx, cy, 0, cx, cy, outerR);
+    grad.addColorStop(0, 'rgba(255,240,220,0.03)');
+    grad.addColorStop(0.5, 'rgba(255,230,200,0.02)');
+    grad.addColorStop(1, 'rgba(255,220,180,0.04)');
+    cgCtx.fillStyle = grad;
+    cgCtx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    const cgTexture = PIXI.Texture.from(cgCanvas);
+    this._colorGradingSprite = new PIXI.Sprite(cgTexture);
+    this._colorGradingSprite.blendMode = PIXI.BLEND_MODES.ADD;
+    this.effectContainer.addChild(this._colorGradingSprite);
+
+    // ColorMatrixFilterが存在する場合、エフェクトコンテナに適用
+    if (typeof PIXI.ColorMatrixFilter !== 'undefined') {
+      this._colorGradingFilter = new PIXI.ColorMatrixFilter();
+      // わずかに暖色に寄せる（赤/緑チャネルを微増、青を微減）
+      // matrix: [R_r, R_g, R_b, R_a, R_offset,
+      //          G_r, G_g, G_b, G_a, G_offset,
+      //          B_r, B_g, B_b, B_a, B_offset,
+      //          A_r, A_g, A_b, A_a, A_offset]
+      this._colorGradingFilter.matrix = [
+        1.04, 0.02, 0,    0, 0.01,  // Red: slightly boosted
+        0.01, 1.02, 0,    0, 0.005, // Green: very slightly boosted
+        0,    0,    0.96, 0, -0.01, // Blue: slightly reduced
+        0,    0,    0,    1, 0,
+      ];
+      this.effectContainer.filters = [this._colorGradingFilter];
+    }
   }
 
   /**
@@ -345,6 +406,12 @@ class PixiRenderer {
       this._vignetteSprite.visible = this.vignetteEnabled;
       this._seasonTintGraphics.visible = this.seasonTintEnabled;
       this._edgeGlowSprite.visible = this.edgeGlowEnabled;
+      if (this._colorGradingSprite) {
+        this._colorGradingSprite.visible = this.colorGradingEnabled;
+      }
+      if (this._colorGradingFilter) {
+        this._colorGradingFilter.enabled = this.colorGradingEnabled;
+      }
 
       // DOF テクスチャ更新（毎フレーム、ゲームCanvasの最新内容を反映）
       if (this.dofEnabled && this._dofContainer) {
@@ -402,6 +469,7 @@ class PixiRenderer {
       // レガシー互換
       case 'bloom': this.edgeGlowEnabled = enabled; break;
       case 'dof': this.dofEnabled = enabled; break;
+      case 'colorGrading': this.colorGradingEnabled = enabled; break;
     }
   }
 
@@ -413,6 +481,7 @@ class PixiRenderer {
     this.seasonTintEnabled = enabled;
     this.edgeGlowEnabled = enabled;
     this.dofEnabled = enabled;
+    this.colorGradingEnabled = enabled;
   }
 
   /**
@@ -462,6 +531,8 @@ class PixiRenderer {
     this._edgeGlowTexture = null;
     this._edgeGlowCanvas = null;
     this._edgeGlowCtx = null;
+    this._colorGradingSprite = null;
+    this._colorGradingFilter = null;
     this._dofTexture = null;
     this._dofTopSprite = null;
     this._dofBottomSprite = null;

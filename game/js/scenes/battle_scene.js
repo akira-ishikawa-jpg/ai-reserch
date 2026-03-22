@@ -819,51 +819,74 @@ class BattleScene extends Scene {
   _drawBackground(renderer) {
     const colors = SEASON_COLORS[this.background] || SEASON_COLORS[SEASON.SPRING];
     const season = this.background;
-
-    // === Sky gradient (top) ===
-    const skyTop = {
-      [SEASON.SPRING]: ['#FFE0EC', '#FFDAE8'],
-      [SEASON.SUMMER]: ['#87CEEB', '#4AA3DF'],
-      [SEASON.AUTUMN]: ['#FFD4A8', '#E8A060'],
-      [SEASON.WINTER]: ['#C8D8F0', '#8AA8D0'],
-    };
-    const sky = skyTop[season] || skyTop[SEASON.SPRING];
-    renderer.drawGradientRect(0, 0, GAME_WIDTH, 200, sky[0], sky[1]);
-
-    // === Distant mountains (silhouettes) ===
-    const mountainColor = {
-      [SEASON.SPRING]: 'rgba(180,200,160,0.5)',
-      [SEASON.SUMMER]: 'rgba(40,120,50,0.5)',
-      [SEASON.AUTUMN]: 'rgba(160,100,60,0.45)',
-      [SEASON.WINTER]: 'rgba(160,170,200,0.5)',
-    };
-    const mtnC = mountainColor[season] || mountainColor[SEASON.SPRING];
     const ctx = renderer.ctx;
-    ctx.fillStyle = mtnC;
-    // Mountain range 1 (far)
+    const now = Date.now();
+
+    // === Sky gradient (3-stop for richer depth) ===
+    const skyColors = {
+      [SEASON.SPRING]: ['#FFE8F0', '#FFDAE8', '#F0C8D8'],
+      [SEASON.SUMMER]: ['#68B8E8', '#4AA3DF', '#3888C0'],
+      [SEASON.AUTUMN]: ['#FFD8B0', '#E8A060', '#C88040'],
+      [SEASON.WINTER]: ['#D0E0F8', '#8AA8D0', '#6888B0'],
+    };
+    const sky = skyColors[season] || skyColors[SEASON.SPRING];
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, 210);
+    skyGrad.addColorStop(0, sky[0]);
+    skyGrad.addColorStop(0.6, sky[1]);
+    skyGrad.addColorStop(1, sky[2]);
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, GAME_WIDTH, 210);
+
+    // === 大気遠近法: 3層の山シルエット（遠→近で色が濃くなる） ===
+
+    // Mountain layer 1 (farthest — 最も薄い、空に近い色)
+    const mtnFar = {
+      [SEASON.SPRING]: 'rgba(200,210,190,0.35)',
+      [SEASON.SUMMER]: 'rgba(100,160,100,0.3)',
+      [SEASON.AUTUMN]: 'rgba(190,140,100,0.3)',
+      [SEASON.WINTER]: 'rgba(180,185,210,0.35)',
+    };
+    ctx.fillStyle = mtnFar[season] || mtnFar[SEASON.SPRING];
     ctx.beginPath();
-    ctx.moveTo(0, 180);
-    ctx.lineTo(80, 120); ctx.lineTo(180, 155); ctx.lineTo(300, 100);
-    ctx.lineTo(420, 140); ctx.lineTo(540, 90); ctx.lineTo(660, 130);
-    ctx.lineTo(780, 105); ctx.lineTo(880, 145); ctx.lineTo(GAME_WIDTH, 120);
-    ctx.lineTo(GAME_WIDTH, 200); ctx.lineTo(0, 200);
+    ctx.moveTo(0, 170);
+    ctx.lineTo(100, 120); ctx.lineTo(220, 145); ctx.lineTo(360, 95);
+    ctx.lineTo(480, 135); ctx.lineTo(600, 85); ctx.lineTo(720, 125);
+    ctx.lineTo(840, 100); ctx.lineTo(GAME_WIDTH, 115);
+    ctx.lineTo(GAME_WIDTH, 190); ctx.lineTo(0, 190);
     ctx.closePath();
     ctx.fill();
 
-    // Mountain range 2 (near, darker)
-    const mtnC2 = {
-      [SEASON.SPRING]: 'rgba(120,160,100,0.5)',
-      [SEASON.SUMMER]: 'rgba(20,80,30,0.5)',
-      [SEASON.AUTUMN]: 'rgba(130,70,40,0.5)',
-      [SEASON.WINTER]: 'rgba(120,130,170,0.5)',
+    // Mountain layer 2 (mid — 中間の色)
+    const mtnMid = {
+      [SEASON.SPRING]: 'rgba(160,185,140,0.45)',
+      [SEASON.SUMMER]: 'rgba(40,120,50,0.45)',
+      [SEASON.AUTUMN]: 'rgba(160,100,60,0.4)',
+      [SEASON.WINTER]: 'rgba(140,150,185,0.45)',
     };
-    ctx.fillStyle = mtnC2[season] || mtnC2[SEASON.SPRING];
+    ctx.fillStyle = mtnMid[season] || mtnMid[SEASON.SPRING];
     ctx.beginPath();
-    ctx.moveTo(0, 210);
-    ctx.lineTo(120, 165); ctx.lineTo(250, 190); ctx.lineTo(400, 155);
-    ctx.lineTo(550, 185); ctx.lineTo(700, 160); ctx.lineTo(850, 180);
-    ctx.lineTo(GAME_WIDTH, 170);
-    ctx.lineTo(GAME_WIDTH, 230); ctx.lineTo(0, 230);
+    ctx.moveTo(0, 190);
+    ctx.lineTo(80, 140); ctx.lineTo(180, 165); ctx.lineTo(300, 120);
+    ctx.lineTo(420, 155); ctx.lineTo(540, 110); ctx.lineTo(660, 148);
+    ctx.lineTo(780, 125); ctx.lineTo(880, 160); ctx.lineTo(GAME_WIDTH, 140);
+    ctx.lineTo(GAME_WIDTH, 210); ctx.lineTo(0, 210);
+    ctx.closePath();
+    ctx.fill();
+
+    // Mountain layer 3 (nearest — 最も濃い)
+    const mtnNear = {
+      [SEASON.SPRING]: 'rgba(110,150,90,0.55)',
+      [SEASON.SUMMER]: 'rgba(20,80,30,0.55)',
+      [SEASON.AUTUMN]: 'rgba(130,70,40,0.5)',
+      [SEASON.WINTER]: 'rgba(100,110,150,0.5)',
+    };
+    ctx.fillStyle = mtnNear[season] || mtnNear[SEASON.SPRING];
+    ctx.beginPath();
+    ctx.moveTo(0, 215);
+    ctx.lineTo(120, 175); ctx.lineTo(250, 195); ctx.lineTo(400, 165);
+    ctx.lineTo(550, 190); ctx.lineTo(700, 170); ctx.lineTo(850, 188);
+    ctx.lineTo(GAME_WIDTH, 178);
+    ctx.lineTo(GAME_WIDTH, 235); ctx.lineTo(0, 235);
     ctx.closePath();
     ctx.fill();
 
@@ -875,11 +898,10 @@ class BattleScene extends Scene {
       [SEASON.WINTER]: 'rgba(90,100,130,0.45)',
     };
     ctx.fillStyle = treeColor[season] || treeColor[SEASON.SPRING];
-    // Simple tree tops as rounded bumps
     for (let tx = -20; tx < GAME_WIDTH + 20; tx += 45 + Math.sin(tx * 0.1) * 15) {
       const treeH = 25 + Math.sin(tx * 0.05) * 12;
       ctx.beginPath();
-      ctx.arc(tx, 235, treeH, Math.PI, 0);
+      ctx.arc(tx, 238, treeH, Math.PI, 0);
       ctx.fill();
     }
 
@@ -896,9 +918,9 @@ class BattleScene extends Scene {
       [SEASON.AUTUMN]: '#8B5A2B',
       [SEASON.WINTER]: '#98A8C8',
     };
-    renderer.drawGradientRect(0, 230, GAME_WIDTH, 150, fieldTop[season] || '#C8E6B0', fieldBot[season] || '#A8D490');
+    renderer.drawGradientRect(0, 233, GAME_WIDTH, 120, fieldTop[season] || '#C8E6B0', fieldBot[season] || '#A8D490');
 
-    // === Ground / battle field ===
+    // === Ground texture (grass + stone pattern) ===
     const groundTop = {
       [SEASON.SPRING]: '#8BB870',
       [SEASON.SUMMER]: '#1B5E20',
@@ -906,28 +928,105 @@ class BattleScene extends Scene {
       [SEASON.WINTER]: '#788098',
     };
     renderer.drawGradientRect(0, 350, GAME_WIDTH, 60, groundTop[season] || '#8BB870', '#2a2a3a');
+
+    // 地面テクスチャ（草+石のパターン）
+    ctx.save();
+    for (let gx = 0; gx < GAME_WIDTH; gx += 16) {
+      for (let gy = 350; gy < 395; gy += 12) {
+        const rnd = seededRandom(gx, gy, 555);
+        if (rnd < 0.15) {
+          // 小石
+          ctx.fillStyle = `rgba(60,50,40,${0.08 + rnd * 0.1})`;
+          ctx.beginPath();
+          ctx.ellipse(gx + rnd * 14, gy + rnd * 8, 2 + rnd * 3, 1.5 + rnd * 1.5, 0, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (rnd < 0.35 && season !== SEASON.WINTER) {
+          // 短い草
+          const grassGreen = season === SEASON.AUTUMN ? 'rgba(120,80,40,0.15)' : 'rgba(60,120,40,0.15)';
+          ctx.strokeStyle = grassGreen;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(gx + rnd * 12, gy + 6);
+          ctx.lineTo(gx + rnd * 12 + Math.sin(now * 0.001 + gx) * 1.5, gy);
+          ctx.stroke();
+        }
+      }
+    }
+    ctx.restore();
+
     renderer.drawRect(0, 395, GAME_WIDTH, GAME_HEIGHT - 395, '#1a1a2a');
 
     // === Ambient glow from season ===
-    const glowAlpha = 0.08 + 0.04 * Math.sin(Date.now() / 2000);
+    const glowAlpha = 0.08 + 0.04 * Math.sin(now / 2000);
     renderer.drawGlow(GAME_WIDTH / 2, 180, 400, colors.primary, glowAlpha);
+
+    // === 花霞レイヤー（バトル用霧） ===
+    ctx.save();
+    const hazeColor = {
+      [SEASON.SPRING]: [255, 220, 235],
+      [SEASON.SUMMER]: [255, 248, 220],
+      [SEASON.AUTUMN]: [255, 210, 180],
+      [SEASON.WINTER]: [210, 220, 250],
+    };
+    const hc = hazeColor[season] || hazeColor[SEASON.SPRING];
+    const hazeAlpha = 0.04 + 0.02 * Math.sin(now / 3000);
+    const hazeY = 180 + Math.sin(now / 4000) * 8;
+    const hazeGrad = ctx.createLinearGradient(0, hazeY, 0, hazeY + 120);
+    hazeGrad.addColorStop(0, `rgba(${hc[0]},${hc[1]},${hc[2]},0)`);
+    hazeGrad.addColorStop(0.4, `rgba(${hc[0]},${hc[1]},${hc[2]},${hazeAlpha})`);
+    hazeGrad.addColorStop(0.6, `rgba(${hc[0]},${hc[1]},${hc[2]},${hazeAlpha * 0.7})`);
+    hazeGrad.addColorStop(1, `rgba(${hc[0]},${hc[1]},${hc[2]},0)`);
+    ctx.fillStyle = hazeGrad;
+    ctx.fillRect(0, hazeY, GAME_WIDTH, 120);
+    ctx.restore();
 
     // === Season-specific decorative elements ===
     ctx.save();
     if (season === SEASON.SPRING) {
-      // Scattered cherry blossom trees (pink blobs in mid-ground)
+      // Cherry blossom trees in mid-ground
       ctx.globalAlpha = 0.3;
       ctx.fillStyle = '#FFB7C5';
-      ctx.beginPath(); ctx.arc(150, 250, 30, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(150, 255, 30, 0, Math.PI * 2); ctx.fill();
       ctx.beginPath(); ctx.arc(700, 260, 25, 0, Math.PI * 2); ctx.fill();
+      // Scattered petals on ground
+      ctx.globalAlpha = 0.15;
+      for (let i = 0; i < 12; i++) {
+        const petalX = seededRandom(i, 0, 888) * GAME_WIDTH;
+        const petalY = 355 + seededRandom(i, 1, 888) * 35;
+        ctx.fillStyle = `rgba(255,${170 + Math.floor(seededRandom(i, 2, 888) * 50)},${190 + Math.floor(seededRandom(i, 3, 888) * 30)},0.3)`;
+        ctx.beginPath();
+        ctx.ellipse(petalX, petalY, 2.5, 1.5, seededRandom(i, 4, 888) * Math.PI, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.globalAlpha = 1;
     } else if (season === SEASON.SUMMER) {
       // Heat shimmer lines
       ctx.globalAlpha = 0.06;
       ctx.fillStyle = '#FFD700';
       for (let sy = 200; sy < 350; sy += 20) {
-        const wave = Math.sin(Date.now() / 1000 + sy * 0.1) * 3;
+        const wave = Math.sin(now / 1000 + sy * 0.1) * 3;
         renderer.drawRect(0, sy + wave, GAME_WIDTH, 2, '#FFD700', 0.06);
+      }
+      ctx.globalAlpha = 1;
+    } else if (season === SEASON.AUTUMN) {
+      // Scattered fallen leaves on ground
+      ctx.globalAlpha = 0.25;
+      for (let i = 0; i < 8; i++) {
+        const lx = seededRandom(i, 0, 777) * GAME_WIDTH;
+        const ly = 358 + seededRandom(i, 1, 777) * 30;
+        const lc = seededRandom(i, 2, 777) > 0.5 ? '#DC143C' : '#DAA520';
+        ctx.fillStyle = lc;
+        ctx.save();
+        ctx.translate(lx, ly);
+        ctx.rotate(seededRandom(i, 3, 777) * Math.PI);
+        ctx.beginPath();
+        ctx.moveTo(0, -3);
+        ctx.lineTo(2, 0);
+        ctx.lineTo(0, 3);
+        ctx.lineTo(-2, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
       }
       ctx.globalAlpha = 1;
     } else if (season === SEASON.WINTER) {
@@ -942,8 +1041,6 @@ class BattleScene extends Scene {
       ctx.globalAlpha = 1;
     }
     ctx.restore();
-
-    // Particles are drawn by renderer automatically
   }
 
   // ---- Units ----

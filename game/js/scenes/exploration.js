@@ -594,8 +594,9 @@ class ExplorationScene extends Scene {
 
     // タップの場合はタップ位置からNPC/宝箱を検索
     if (tap && !spacePressed) {
+      const yRatio = TILE_RENDER_H / TILE_SIZE;
       const tapTileX = Math.floor((tap.x + this.camera.x) / TILE_SIZE);
-      const tapTileY = Math.floor((tap.y + this.camera.y) / TILE_SIZE);
+      const tapTileY = Math.floor((tap.y + this.camera.y * yRatio) / TILE_RENDER_H);
       // タップ先がプレイヤーの隣接タイルか確認
       const dist = Math.abs(tapTileX - p.x) + Math.abs(tapTileY - p.y);
       if (dist === 1) {
@@ -700,20 +701,28 @@ class ExplorationScene extends Scene {
     if (!this.currentMap) return;
     const mapPixelW = this.currentMap.width * TILE_SIZE;
     const mapPixelH = this.currentMap.height * TILE_SIZE;
+    // 描画用のマップ高さ（Y圧縮後）
+    const yRatio = TILE_RENDER_H / TILE_SIZE;
+    const mapRenderH = this.currentMap.height * TILE_RENDER_H;
 
+    // カメラは論理座標系（TILE_SIZE基準）で管理
     this.camera.x = Math.max(0,
       Math.min(this.player.pixelX - GAME_WIDTH / 2 + TILE_SIZE / 2,
         mapPixelW - GAME_WIDTH));
+    // Y方向: 描画時にyRatioで圧縮されるため、カメラ範囲も調整
+    const playerScreenY = this.player.pixelY * yRatio;
+    const cameraScreenY = playerScreenY - GAME_HEIGHT / 2 + TILE_RENDER_H / 2;
+    // 論理カメラYに逆変換
     this.camera.y = Math.max(0,
-      Math.min(this.player.pixelY - GAME_HEIGHT / 2 + TILE_SIZE / 2,
-        mapPixelH - GAME_HEIGHT));
+      Math.min(cameraScreenY / yRatio,
+        (mapRenderH - GAME_HEIGHT) / yRatio));
 
     // マップがゲーム画面より小さい場合は中央寄せ
     if (mapPixelW < GAME_WIDTH) {
       this.camera.x = -(GAME_WIDTH - mapPixelW) / 2;
     }
-    if (mapPixelH < GAME_HEIGHT) {
-      this.camera.y = -(GAME_HEIGHT - mapPixelH) / 2;
+    if (mapRenderH < GAME_HEIGHT) {
+      this.camera.y = -(GAME_HEIGHT - mapRenderH) / yRatio;
     }
   }
 
@@ -797,6 +806,33 @@ class ExplorationScene extends Scene {
     return 'npc_brown';
   }
 
+  // ==========================================
+  // パースペクティブ変換ヘルパー (描画専用)
+  // ==========================================
+
+  // タイルグリッド座標 → スクリーンピクセル座標
+  _tileToScreen(tx, ty) {
+    const yRatio = TILE_RENDER_H / TILE_SIZE;
+    return {
+      x: tx * TILE_SIZE - this.camera.x,
+      y: ty * TILE_RENDER_H - this.camera.y * yRatio,
+    };
+  }
+
+  // ピクセル座標(論理) → スクリーン座標
+  _pixelToScreen(px, py) {
+    const yRatio = TILE_RENDER_H / TILE_SIZE;
+    return {
+      x: px - this.camera.x,
+      y: py * yRatio - this.camera.y * yRatio,
+    };
+  }
+
+  // カメラのY圧縮比率
+  _getYRatio() {
+    return TILE_RENDER_H / TILE_SIZE;
+  }
+
   _getEnemyPixelType(enemy) {
     if (enemy.isBoss) return 'boss_flower';
     // Map enemy IDs to pixel char types
@@ -851,10 +887,13 @@ class ExplorationScene extends Scene {
     // 8. プレイヤー描画
     this.drawPlayer(renderer);
 
-    // 8b. 霧レイヤー（タイルマップ・キャラの上にオーバーレイ）
+    // 8b. ポイントライト（Phase 4）
+    this._drawPointLights(renderer, map);
+
+    // 8c. 霧レイヤー（タイルマップ・キャラの上にオーバーレイ）
     this._drawFog(renderer);
 
-    // 8c. ゴッドレイ（ダンジョンのみ — 天井の穴から差し込む光）
+    // 8d. ゴッドレイ（ダンジョンのみ — 天井の穴から差し込む光）
     this._drawGodRays(renderer);
 
     // 9. ミニマップ
@@ -903,61 +942,62 @@ class ExplorationScene extends Scene {
 
   drawTiles(renderer, map, colors) {
     const ctx = renderer.ctx;
+    const RH = TILE_RENDER_H;
+    const yRatio = this._getYRatio();
+    const camScreenY = this.camera.y * yRatio;
     const startTileX = Math.max(0, Math.floor(this.camera.x / TILE_SIZE));
-    const startTileY = Math.max(0, Math.floor(this.camera.y / TILE_SIZE));
+    const startTileY = Math.max(0, Math.floor((this.camera.y * yRatio) / RH) - 1);
     const endTileX = Math.min(map.width, Math.ceil((this.camera.x + GAME_WIDTH) / TILE_SIZE) + 1);
-    const endTileY = Math.min(map.height, Math.ceil((this.camera.y + GAME_HEIGHT) / TILE_SIZE) + 1);
+    const endTileY = Math.min(map.height, Math.ceil((camScreenY + GAME_HEIGHT) / RH) + 2);
     const now = Date.now();
+    const WALL_FRONT_H = 14; // 壁の正面高さ
 
     for (let ty = startTileY; ty < endTileY; ty++) {
       for (let tx = startTileX; tx < endTileX; tx++) {
         const tile = map.tiles[ty][tx];
         const sx = Math.floor(tx * TILE_SIZE - this.camera.x);
-        const sy = Math.floor(ty * TILE_SIZE - this.camera.y);
+        const sy = Math.floor(ty * RH - camScreenY);
         const deco = this.tileDecorations && this.tileDecorations[ty] ? this.tileDecorations[ty][tx] : null;
 
         if (tile === TILE.FLOOR || tile === TILE.EMPTY || tile === TILE.ENTRANCE || tile === TILE.DOOR) {
-          // --- Floor tile: 石畳テクスチャ (4x4 grid of 8x8 stones) ---
+          // --- Floor tile: 石畳テクスチャ (4x3 grid, Y圧縮) ---
           const baseColor = colors[tile] || '#CCC';
           const bc = this._parseHex(baseColor);
-          const stoneSize = 8; // 32 / 4 = 8px per stone
+          const stoneSizeX = 8; // 32 / 4
+          const stoneSizeY = 6; // 24 / 4
 
           for (let sty = 0; sty < 4; sty++) {
             for (let stx = 0; stx < 4; stx++) {
-              const stoneX = sx + stx * stoneSize;
-              const stoneY = sy + sty * stoneSize;
+              const stoneX = sx + stx * stoneSizeX;
+              const stoneY = sy + sty * stoneSizeY;
 
-              // Per-stone random color variation (±5%)
               const rnd = seededRandom(tx * 4 + stx, ty * 4 + sty);
-              const variation = (rnd - 0.5) * 0.1; // ±5%
+              const variation = (rnd - 0.5) * 0.1;
               const r = Math.min(255, Math.max(0, Math.round(bc[0] * (1 + variation))));
               const g = Math.min(255, Math.max(0, Math.round(bc[1] * (1 + variation))));
               const b = Math.min(255, Math.max(0, Math.round(bc[2] * (1 + variation))));
 
-              // Stone body
               ctx.fillStyle = `rgb(${r},${g},${b})`;
-              ctx.fillRect(stoneX, stoneY, stoneSize, stoneSize);
+              ctx.fillRect(stoneX, stoneY, stoneSizeX, stoneSizeY);
 
-              // Left & top highlight (light from top-left)
               ctx.fillStyle = GLOBAL_LIGHT.highlightColor;
-              ctx.fillRect(stoneX, stoneY, stoneSize, 1); // top edge
-              ctx.fillRect(stoneX, stoneY, 1, stoneSize); // left edge
+              ctx.fillRect(stoneX, stoneY, stoneSizeX, 1);
+              ctx.fillRect(stoneX, stoneY, 1, stoneSizeY);
 
-              // Right & bottom shadow
               ctx.fillStyle = 'rgba(20,10,30,0.12)';
-              ctx.fillRect(stoneX + stoneSize - 1, stoneY, 1, stoneSize); // right edge
-              ctx.fillRect(stoneX, stoneY + stoneSize - 1, stoneSize, 1); // bottom edge
+              ctx.fillRect(stoneX + stoneSizeX - 1, stoneY, 1, stoneSizeY);
+              ctx.fillRect(stoneX, stoneY + stoneSizeY - 1, stoneSizeX, 1);
             }
           }
 
-          // 目地 (mortar lines between stones)
+          // 目地
           ctx.fillStyle = 'rgba(20,10,30,0.10)';
           for (let i = 1; i < 4; i++) {
-            ctx.fillRect(sx, sy + i * stoneSize, TILE_SIZE, 1); // horizontal joints
-            ctx.fillRect(sx + i * stoneSize, sy, 1, TILE_SIZE); // vertical joints
+            ctx.fillRect(sx, sy + i * stoneSizeY, TILE_SIZE, 1);
+            ctx.fillRect(sx + i * stoneSizeX, sy, 1, RH);
           }
 
-          // Ambient Occlusion: 壁に隣接する床の壁側端2pxを暗く
+          // Ambient Occlusion
           const aboveTile = ty > 0 ? map.tiles[ty - 1][tx] : TILE.WALL;
           const leftTile  = tx > 0 ? map.tiles[ty][tx - 1] : TILE.WALL;
           const wallAbove = aboveTile === TILE.WALL;
@@ -969,39 +1009,36 @@ class ExplorationScene extends Scene {
           }
           if (wallLeft) {
             ctx.fillStyle = 'rgba(20,10,30,0.12)';
-            ctx.fillRect(sx, sy, 2, TILE_SIZE);
+            ctx.fillRect(sx, sy, 2, RH);
           }
-          // Corner AO patch (both above and left are walls)
           if (wallAbove && wallLeft) {
             ctx.fillStyle = 'rgba(20,10,30,0.18)';
-            ctx.fillRect(sx, sy, 4, 4);
+            ctx.fillRect(sx, sy, 4, 3);
           }
 
-          // Entrance / exit: light pillar effect
+          // Entrance / exit
           if (tile === TILE.ENTRANCE) {
             const shimmer = 0.1 + 0.08 * Math.sin(now / 400 + tx);
             ctx.fillStyle = `rgba(255,215,0,${shimmer})`;
-            ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
-            // Vertical light pillar
+            ctx.fillRect(sx, sy, TILE_SIZE, RH);
             const pillarAlpha = 0.12 + 0.08 * Math.sin(now / 500 + tx * 1.3);
-            const pillarGrad = ctx.createLinearGradient(sx + TILE_SIZE / 2, sy - 40, sx + TILE_SIZE / 2, sy + TILE_SIZE);
+            const pillarGrad = ctx.createLinearGradient(sx + TILE_SIZE / 2, sy - 30, sx + TILE_SIZE / 2, sy + RH);
             pillarGrad.addColorStop(0, `rgba(255,245,200,0)`);
             pillarGrad.addColorStop(0.3, `rgba(255,235,150,${pillarAlpha})`);
             pillarGrad.addColorStop(1, `rgba(255,215,0,0)`);
             ctx.fillStyle = pillarGrad;
-            ctx.fillRect(sx + 4, sy - 40, TILE_SIZE - 8, TILE_SIZE + 40);
+            ctx.fillRect(sx + 4, sy - 30, TILE_SIZE - 8, RH + 30);
           }
 
-          // --- 草花デコレーション（床タイルの上に20%の確率で描画） ---
+          // 草花デコレーション
           if (tile === TILE.FLOOR || tile === TILE.EMPTY) {
             const grassChance = seededRandom(tx, ty, 999);
             if (grassChance < 0.2) {
-              const grassCount = 2 + Math.floor(seededRandom(tx, ty, 1001) * 2); // 2-3本
+              const grassCount = 2 + Math.floor(seededRandom(tx, ty, 1001) * 2);
               for (let gi = 0; gi < grassCount; gi++) {
                 const gBaseX = sx + 6 + seededRandom(tx, ty, 1010 + gi) * (TILE_SIZE - 12);
-                const gBaseY = sy + TILE_SIZE - 2;
-                const gHeight = 5 + seededRandom(tx, ty, 1020 + gi) * 5; // 5-10px
-                // 風によるsin波揺れ
+                const gBaseY = sy + RH - 2;
+                const gHeight = 4 + seededRandom(tx, ty, 1020 + gi) * 4;
                 const windSway = Math.sin(now * 0.002 + tx * 0.8 + gi * 1.5) * 1.5;
 
                 ctx.strokeStyle = `rgba(80,${140 + Math.floor(seededRandom(tx, ty, 1030 + gi) * 40)},60,0.7)`;
@@ -1011,11 +1048,9 @@ class ExplorationScene extends Scene {
                 ctx.quadraticCurveTo(gBaseX + windSway * 0.5, gBaseY - gHeight * 0.5, gBaseX + windSway, gBaseY - gHeight);
                 ctx.stroke();
 
-                // 先端に薄い白（光の透過表現）
                 ctx.fillStyle = 'rgba(255,255,240,0.35)';
                 ctx.fillRect(Math.floor(gBaseX + windSway), Math.floor(gBaseY - gHeight), 1, 2);
 
-                // 春のエリアではピンクの花弁を混ぜる
                 if (map.season === SEASON.SPRING && seededRandom(tx, ty, 1050 + gi) < 0.4) {
                   const petalX = gBaseX + windSway;
                   const petalY = gBaseY - gHeight - 1;
@@ -1029,141 +1064,149 @@ class ExplorationScene extends Scene {
           }
 
         } else if (tile === TILE.WALL) {
-          // --- Wall tile: 3D化 with unified lighting ---
+          // --- Wall tile: 3/4パースペクティブ壁描画 ---
           const wallBase = colors[tile] || '#888';
           const wc = this._parseHex(wallBase);
 
-          // Wall body with gradient + seededRandom color variation
           const rndW = seededRandom(tx, ty, 42);
-          const wVar = (rndW - 0.5) * 0.08; // ±4% variation
+          const wVar = (rndW - 0.5) * 0.08;
           const wr = Math.min(255, Math.max(0, Math.round(wc[0] * (1 + wVar))));
           const wg = Math.min(255, Math.max(0, Math.round(wc[1] * (1 + wVar))));
           const wb = Math.min(255, Math.max(0, Math.round(wc[2] * (1 + wVar))));
 
-          renderer.drawGradientRect(sx, sy, TILE_SIZE, TILE_SIZE,
+          // 壁の上面 (Y圧縮されたタイルとして描画)
+          renderer.drawGradientRect(sx, sy, TILE_SIZE, RH,
             `rgb(${Math.min(255, wr + 30)},${Math.min(255, wg + 30)},${Math.min(255, wb + 30)})`,
             `rgb(${Math.max(0, wr - 20)},${Math.max(0, wg - 20)},${Math.max(0, wb - 20)})`);
 
-          // Additional seededRandom texture splotches
+          // テクスチャパッチ
           const rndW2 = seededRandom(tx, ty, 77);
           if (rndW2 > 0.4) {
             ctx.fillStyle = rndW2 > 0.7 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
             const patchX = sx + Math.floor(seededRandom(tx, ty, 100) * (TILE_SIZE - 8));
-            const patchY = sy + Math.floor(seededRandom(tx, ty, 200) * (TILE_SIZE - 6));
-            ctx.fillRect(patchX, patchY, 6, 5);
+            const patchY = sy + Math.floor(seededRandom(tx, ty, 200) * (RH - 6));
+            ctx.fillRect(patchX, patchY, 6, 4);
           }
 
-          // Mortar lines
+          // モルタルライン
           if (rndW > 0.3) {
             ctx.fillStyle = 'rgba(0,0,0,0.07)';
-            ctx.fillRect(sx + 3, sy + TILE_SIZE / 2 - 1, TILE_SIZE - 6, 1);
+            ctx.fillRect(sx + 3, sy + RH / 2 - 1, TILE_SIZE - 6, 1);
           }
           if (rndW > 0.5) {
             const off = (ty % 2 === 0) ? TILE_SIZE * 0.6 : TILE_SIZE * 0.3;
             ctx.fillStyle = 'rgba(0,0,0,0.06)';
-            ctx.fillRect(sx + off, sy + 2, 1, TILE_SIZE / 2 - 3);
+            ctx.fillRect(sx + off, sy + 2, 1, RH / 2 - 2);
           }
 
-          // 3D edges with adjacency check
-          const wallAboveW = ty > 0 && map.tiles[ty - 1][tx] === TILE.WALL;
-          const wallLeftW  = tx > 0 && map.tiles[ty][tx - 1] === TILE.WALL;
+          // === 壁の正面描画 (3/4パースペクティブの核心) ===
+          // 下に壁がない場合のみ正面を描画（壁の最下行だけ正面が見える）
+          const belowTile = (ty + 1 < map.height) ? map.tiles[ty + 1][tx] : TILE.FLOOR;
+          if (belowTile !== TILE.WALL) {
+            const frontY = sy + RH; // 上面の直下
+            // 正面の暗い色
+            const frontR = Math.max(0, wr - 45);
+            const frontG = Math.max(0, wg - 45);
+            const frontB = Math.max(0, wb - 45);
 
-          // Top face (3px) — only if no wall above
+            // 正面グラデーション（上が暗い＝AO、下に向かってやや明るく）
+            const frontGrad = ctx.createLinearGradient(sx, frontY, sx, frontY + WALL_FRONT_H);
+            frontGrad.addColorStop(0, `rgb(${Math.max(0, frontR - 15)},${Math.max(0, frontG - 15)},${Math.max(0, frontB - 15)})`);
+            frontGrad.addColorStop(1, `rgb(${frontR},${frontG},${frontB})`);
+            ctx.fillStyle = frontGrad;
+            ctx.fillRect(sx, frontY, TILE_SIZE, WALL_FRONT_H);
+
+            // 正面の石テクスチャ（2段の石ブロック）
+            ctx.fillStyle = 'rgba(0,0,0,0.06)';
+            ctx.fillRect(sx, frontY + WALL_FRONT_H / 2, TILE_SIZE, 1); // 水平分割
+            const vOff = (ty % 2 === 0) ? TILE_SIZE * 0.4 : TILE_SIZE * 0.65;
+            ctx.fillRect(sx + vOff, frontY, 1, WALL_FRONT_H); // 垂直分割
+
+            // 正面左端ハイライト
+            const wallLeftW = tx > 0 && map.tiles[ty][tx - 1] === TILE.WALL;
+            if (!wallLeftW) {
+              ctx.fillStyle = 'rgba(255,250,240,0.12)';
+              ctx.fillRect(sx, frontY, 2, WALL_FRONT_H);
+            }
+            // 正面右端シャドウ
+            ctx.fillStyle = 'rgba(20,10,30,0.15)';
+            ctx.fillRect(sx + TILE_SIZE - 2, frontY, 2, WALL_FRONT_H);
+            // 正面下端シャドウ
+            ctx.fillStyle = 'rgba(20,10,30,0.2)';
+            ctx.fillRect(sx, frontY + WALL_FRONT_H - 1, TILE_SIZE, 1);
+          }
+
+          // 上面エッジ
+          const wallAboveW = ty > 0 && map.tiles[ty - 1][tx] === TILE.WALL;
+          const wallLeftWe = tx > 0 && map.tiles[ty][tx - 1] === TILE.WALL;
+
           if (!wallAboveW) {
             const topR = Math.min(255, wr + 50);
             const topG = Math.min(255, wg + 50);
             const topB = Math.min(255, wb + 50);
             ctx.fillStyle = `rgb(${topR},${topG},${topB})`;
-            ctx.fillRect(sx, sy, TILE_SIZE, 3);
-            // Additional highlight overlay on top face
+            ctx.fillRect(sx, sy, TILE_SIZE, 2);
             ctx.fillStyle = GLOBAL_LIGHT.highlightColor;
-            ctx.fillRect(sx, sy, TILE_SIZE, 3);
+            ctx.fillRect(sx, sy, TILE_SIZE, 2);
           }
-
-          // Left edge highlight (2px) — only if no wall to the left
-          if (!wallLeftW) {
+          if (!wallLeftWe) {
             ctx.fillStyle = GLOBAL_LIGHT.highlightColor;
-            ctx.fillRect(sx, sy, 2, TILE_SIZE);
+            ctx.fillRect(sx, sy, 2, RH);
           }
-
-          // Right edge shadow (2px)
           ctx.fillStyle = 'rgba(20,10,30,0.15)';
-          ctx.fillRect(sx + TILE_SIZE - 2, sy, 2, TILE_SIZE);
+          ctx.fillRect(sx + TILE_SIZE - 2, sy, 2, RH);
 
-          // Bottom edge shadow (2px)
-          ctx.fillStyle = 'rgba(20,10,30,0.2)';
-          ctx.fillRect(sx, sy + TILE_SIZE - 2, TILE_SIZE, 2);
-
-          // Drop shadow (offset 2px right, 2px down) — cast onto adjacent floor
-          // Only draw shadow on right neighbor if it's a floor
+          // ドロップシャドウ
           const rightTile = (tx + 1 < map.width) ? map.tiles[ty][tx + 1] : TILE.WALL;
-          const belowTile = (ty + 1 < map.height) ? map.tiles[ty + 1][tx] : TILE.WALL;
           if (rightTile !== TILE.WALL) {
             ctx.fillStyle = GLOBAL_LIGHT.shadowColor;
-            ctx.fillRect(sx + TILE_SIZE, sy + GLOBAL_LIGHT.shadowOffsetY, GLOBAL_LIGHT.shadowOffsetX, TILE_SIZE);
-          }
-          if (belowTile !== TILE.WALL) {
-            ctx.fillStyle = GLOBAL_LIGHT.shadowColor;
-            ctx.fillRect(sx + GLOBAL_LIGHT.shadowOffsetX, sy + TILE_SIZE, TILE_SIZE, GLOBAL_LIGHT.shadowOffsetY);
+            ctx.fillRect(sx + TILE_SIZE, sy + 2, 2, RH);
           }
 
         } else if (tile === TILE.WATER) {
-          // --- Water tile: 3層構造（深度層 + 波紋層 + スペキュラ層） ---
-
-          // 1. 深度グラデーション（上が明るい浅瀬、下が暗い深部）
-          const depthGrad = ctx.createLinearGradient(sx, sy, sx, sy + TILE_SIZE);
-          depthGrad.addColorStop(0, '#5B8DAF');  // 浅い水色
-          depthGrad.addColorStop(1, '#3A6B8C');  // 深い水色
+          // --- Water tile: パースペクティブ対応 ---
+          const depthGrad = ctx.createLinearGradient(sx, sy, sx, sy + RH);
+          depthGrad.addColorStop(0, '#5B8DAF');
+          depthGrad.addColorStop(1, '#3A6B8C');
           ctx.fillStyle = depthGrad;
-          ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+          ctx.fillRect(sx, sy, TILE_SIZE, RH);
 
-          // 2. 波紋層（3本のsin波を重ねて水面の横方向の微細な変位を表現）
+          // 波紋
           const waveParams = [
-            { speed: 0.002, amplitude: 1.5, phase: 0, yOffset: 8, alpha: 0.12 },
-            { speed: 0.0015, amplitude: 1.0, phase: 2.1, yOffset: 16, alpha: 0.09 },
-            { speed: 0.003, amplitude: 0.8, phase: 4.2, yOffset: 24, alpha: 0.06 },
+            { speed: 0.002, amplitude: 1.0, phase: 0, yFrac: 0.33, alpha: 0.12 },
+            { speed: 0.0015, amplitude: 0.8, phase: 2.1, yFrac: 0.66, alpha: 0.09 },
           ];
-          for (let wi = 0; wi < 3; wi++) {
-            const wp = waveParams[wi];
+          for (const wp of waveParams) {
             ctx.strokeStyle = `rgba(255,255,255,${wp.alpha})`;
             ctx.lineWidth = 1;
             ctx.beginPath();
             for (let px = 0; px < TILE_SIZE; px++) {
-              const wy = sy + wp.yOffset + Math.sin(now * wp.speed + (sx + px) * 0.15 + wp.phase) * wp.amplitude;
+              const wy = sy + RH * wp.yFrac + Math.sin(now * wp.speed + (sx + px) * 0.15 + wp.phase) * wp.amplitude;
               if (px === 0) ctx.moveTo(sx + px, wy);
               else ctx.lineTo(sx + px, wy);
             }
             ctx.stroke();
           }
 
-          // 3. スペキュラ層（光源方向315°左上からの反射 — 白い楕円が時間で移動）
+          // スペキュラ
           const specX = sx + 8 + Math.sin(now * 0.001 + sy * 0.1) * 10;
-          const specY = sy + 6 + Math.cos(now * 0.0008 + sx * 0.1) * 4;
+          const specY = sy + 4 + Math.cos(now * 0.0008 + sx * 0.1) * 3;
           const specAlpha = 0.15 + Math.sin(now * 0.003 + sx) * 0.08;
           ctx.fillStyle = `rgba(255,255,255,${Math.max(0, specAlpha)})`;
           ctx.beginPath();
-          ctx.ellipse(specX, specY, 3, 1.5, -0.4, 0, Math.PI * 2);
-          ctx.fill();
-
-          // 追加スペキュラ（タイル内の別の位置にもう1つ）
-          const specX2 = sx + TILE_SIZE - 10 + Math.sin(now * 0.0012 + sy * 0.15 + 3) * 6;
-          const specY2 = sy + TILE_SIZE - 10 + Math.cos(now * 0.0009 + sx * 0.12 + 2) * 3;
-          const specAlpha2 = 0.10 + Math.sin(now * 0.002 + sx * 0.5 + 1) * 0.06;
-          ctx.fillStyle = `rgba(255,255,255,${Math.max(0, specAlpha2)})`;
-          ctx.beginPath();
-          ctx.ellipse(specX2, specY2, 2, 1, -0.3, 0, Math.PI * 2);
+          ctx.ellipse(specX, specY, 3, 1.2, -0.4, 0, Math.PI * 2);
           ctx.fill();
 
         } else {
           // Default tile
           const color = colors[tile] || '#333';
-          renderer.drawRect(sx, sy, TILE_SIZE, TILE_SIZE, color);
+          renderer.drawRect(sx, sy, TILE_SIZE, RH, color);
         }
 
-        // Subtle grid lines (stone joint feel)
+        // Subtle grid lines
         ctx.fillStyle = 'rgba(0,0,0,0.05)';
         ctx.fillRect(sx, sy, TILE_SIZE, 1);
-        ctx.fillRect(sx, sy, 1, TILE_SIZE);
+        ctx.fillRect(sx, sy, 1, RH);
       }
     }
   }
@@ -1425,29 +1468,96 @@ class ExplorationScene extends Scene {
     ctx.restore();
   }
 
+  // ==========================================
+  // ポイントライト描画 (Phase 4)
+  // ==========================================
+
+  _drawPointLights(renderer, map) {
+    if (!map) return;
+    const isDungeon = map.id && map.id.startsWith('sennen');
+    const now = Date.now();
+
+    if (isDungeon) {
+      // ダンジョン: 壁タイルの15%に桜ピンクの発光（桜根ライト）
+      const RH = TILE_RENDER_H;
+      const yRatio = this._getYRatio();
+      const camScreenY = this.camera.y * yRatio;
+      const startTileX = Math.max(0, Math.floor(this.camera.x / TILE_SIZE) - 1);
+      const startTileY = Math.max(0, Math.floor(camScreenY / RH) - 1);
+      const endTileX = Math.min(map.width, Math.ceil((this.camera.x + GAME_WIDTH) / TILE_SIZE) + 1);
+      const endTileY = Math.min(map.height, Math.ceil((camScreenY + GAME_HEIGHT) / RH) + 2);
+
+      for (let ty = startTileY; ty < endTileY; ty++) {
+        for (let tx = startTileX; tx < endTileX; tx++) {
+          if (map.tiles[ty][tx] !== TILE.WALL) continue;
+          if (seededRandom(tx, ty, 7777) > 0.15) continue;
+
+          const sx = Math.floor(tx * TILE_SIZE - this.camera.x);
+          const sy = Math.floor(ty * RH - camScreenY);
+          const pulse = 0.08 + 0.04 * Math.sin(now / 800 + tx * 2.3 + ty * 1.7);
+          renderer.drawPointLight(sx + TILE_SIZE / 2, sy + RH / 2, 40, '#FFB7C5', pulse);
+        }
+      }
+
+      // セーブポイント: シアンの光柱
+      if (map.savePoints) {
+        for (const sp of map.savePoints) {
+          const scr = this._tileToScreen(sp.x, sp.y);
+          const cx = scr.x + TILE_SIZE / 2;
+          const cy = scr.y + TILE_RENDER_H / 2;
+          const pulse = 0.12 + 0.06 * Math.sin(now / 500);
+          renderer.drawPointLight(cx, cy, 60, '#7FFFD4', pulse);
+        }
+      }
+    } else {
+      // 町: NPC近くの暖色光（宿屋の窓から漏れる光、商人の近くのランタン等）
+      for (const npc of map.npcs) {
+        const scr = this._tileToScreen(npc.x, npc.y);
+        const cx = scr.x + TILE_SIZE / 2;
+        const cy = scr.y + TILE_RENDER_H / 2;
+        const pulse = 0.06 + 0.03 * Math.sin(now / 700 + npc.x * 1.5);
+        const lightColor = npc.id === 'innkeeper' ? '#FFD4A0' : '#FFE8C0';
+        const radius = npc.id === 'innkeeper' ? 55 : 40;
+        renderer.drawPointLight(cx, cy, radius, lightColor, pulse);
+      }
+
+      // セーブポイント: シアンの光柱
+      if (map.savePoints) {
+        for (const sp of map.savePoints) {
+          const scr = this._tileToScreen(sp.x, sp.y);
+          const cx = scr.x + TILE_SIZE / 2;
+          const cy = scr.y + TILE_RENDER_H / 2;
+          const pulse = 0.10 + 0.05 * Math.sin(now / 500);
+          renderer.drawPointLight(cx, cy, 50, '#7FFFD4', pulse);
+        }
+      }
+    }
+  }
+
   drawSavePoints(renderer, map) {
     if (!map.savePoints) return;
     const ctx = renderer.ctx;
     const now = Date.now();
     for (const sp of map.savePoints) {
-      const sx = sp.x * TILE_SIZE - this.camera.x;
-      const sy = sp.y * TILE_SIZE - this.camera.y;
+      const scr = this._tileToScreen(sp.x, sp.y);
+      const sx = scr.x;
+      const sy = scr.y;
       if (sx < -TILE_SIZE * 2 || sx > GAME_WIDTH + TILE_SIZE || sy < -TILE_SIZE * 2 || sy > GAME_HEIGHT + TILE_SIZE) continue;
 
       const pulse = 0.4 + 0.3 * Math.sin(now / 400);
       const centerX = sx + TILE_SIZE / 2;
-      const centerY = sy + TILE_SIZE / 2;
+      const centerY = sy + TILE_RENDER_H / 2;
 
       // Light pillar (vertical glow extending upward)
       ctx.save();
       const pillarH = 80;
-      const pillarGrad = ctx.createLinearGradient(centerX, centerY - pillarH, centerX, centerY + TILE_SIZE / 2);
+      const pillarGrad = ctx.createLinearGradient(centerX, centerY - pillarH, centerX, centerY + TILE_RENDER_H / 2);
       pillarGrad.addColorStop(0, 'rgba(127,255,212,0)');
       pillarGrad.addColorStop(0.3, `rgba(127,255,212,${0.06 + 0.04 * Math.sin(now / 600)})`);
       pillarGrad.addColorStop(0.7, `rgba(200,255,240,${0.12 + 0.06 * Math.sin(now / 500)})`);
       pillarGrad.addColorStop(1, 'rgba(127,255,212,0)');
       ctx.fillStyle = pillarGrad;
-      ctx.fillRect(centerX - 10, centerY - pillarH, 20, pillarH + TILE_SIZE / 2);
+      ctx.fillRect(centerX - 10, centerY - pillarH, 20, pillarH + TILE_RENDER_H / 2);
       ctx.restore();
 
       // Pulsing outer aura
@@ -1499,8 +1609,9 @@ class ExplorationScene extends Scene {
     const ctx = renderer.ctx;
     const now = Date.now();
     for (const chest of map.chests) {
-      const cx = chest.x * TILE_SIZE - this.camera.x;
-      const cy = chest.y * TILE_SIZE - this.camera.y;
+      const scr = this._tileToScreen(chest.x, chest.y);
+      const cx = scr.x;
+      const cy = scr.y;
       if (cx < -TILE_SIZE || cx > GAME_WIDTH || cy < -TILE_SIZE || cy > GAME_HEIGHT) continue;
 
       const opened = this.openedChests[chest.id];
@@ -1636,34 +1747,39 @@ class ExplorationScene extends Scene {
   drawNPCs(renderer, map) {
     const ctx = renderer.ctx;
     for (const npc of map.npcs) {
-      const nx = npc.x * TILE_SIZE - this.camera.x;
-      const ny = npc.y * TILE_SIZE - this.camera.y;
+      const scr = this._tileToScreen(npc.x, npc.y);
+      const nx = scr.x;
+      const ny = scr.y;
       if (nx < -TILE_SIZE || nx > GAME_WIDTH || ny < -TILE_SIZE || ny > GAME_HEIGHT) continue;
+
+      // キャラの足元をタイルの下端に合わせる
+      const charH = 27; // 9rows * 3scale
+      const charDrawY = ny + TILE_RENDER_H - charH;
 
       // Foot shadow
       ctx.fillStyle = 'rgba(0,0,0,0.15)';
       ctx.beginPath();
-      ctx.ellipse(nx + TILE_SIZE / 2, ny + TILE_SIZE - 1, TILE_SIZE * 0.3, 3, 0, 0, Math.PI * 2);
+      ctx.ellipse(nx + TILE_SIZE / 2, ny + TILE_RENDER_H - 1, TILE_SIZE * 0.3, 2, 0, 0, Math.PI * 2);
       ctx.fill();
 
-      // Draw NPC pixel character
+      // Draw NPC pixel character (Y圧縮しない — ビルボード方式)
       const pixelType = this._getNpcPixelType(npc);
       if (PIXEL_CHARS[pixelType]) {
-        renderer.drawPixelChar(nx + 2, ny, 3, pixelType, { direction: 'down', frame: 0 });
+        renderer.drawPixelChar(nx + 2, charDrawY, 3, pixelType, { direction: 'down', frame: 0 });
       } else {
-        renderer.drawSprite(nx + 4, ny + 2, TILE_SIZE - 8, TILE_SIZE - 4, npc.spriteData);
+        renderer.drawSprite(nx + 4, charDrawY, TILE_SIZE - 8, charH, npc.spriteData);
       }
 
-      // Name display (only when player is within 3 tiles)
+      // Name display
       const dist = Math.abs(npc.x - this.player.x) + Math.abs(npc.y - this.player.y);
       if (dist <= 3) {
         const nameAlpha = dist <= 2 ? 1 : 0.6;
         const nameW = npc.name.length * 11 + 12;
         ctx.save();
         ctx.globalAlpha = nameAlpha;
-        renderer.drawRoundedRect(nx + TILE_SIZE / 2 - nameW / 2, ny - 20, nameW, 17, 4,
+        renderer.drawRoundedRect(nx + TILE_SIZE / 2 - nameW / 2, charDrawY - 18, nameW, 17, 4,
           'rgba(0,0,0,0.55)', null);
-        renderer.drawText(npc.name, nx + TILE_SIZE / 2, ny - 18,
+        renderer.drawText(npc.name, nx + TILE_SIZE / 2, charDrawY - 16,
           { size: 10, color: '#FFE', align: 'center', shadow: true });
         ctx.restore();
       }
@@ -1674,13 +1790,14 @@ class ExplorationScene extends Scene {
     const ctx = renderer.ctx;
     const now = Date.now();
     for (const enemy of this.enemySymbols) {
-      const ex = enemy.pixelX - this.camera.x;
-      const ey = enemy.pixelY - this.camera.y;
+      const scr = this._pixelToScreen(enemy.pixelX, enemy.pixelY);
+      const ex = scr.x;
+      const ey = scr.y;
       if (ex < -TILE_SIZE * 2 || ex > GAME_WIDTH + TILE_SIZE || ey < -TILE_SIZE * 2 || ey > GAME_HEIGHT + TILE_SIZE) continue;
 
       const pixelType = this._getEnemyPixelType(enemy);
       const centerX = ex + TILE_SIZE / 2;
-      const centerY = ey + TILE_SIZE / 2;
+      const centerY = ey + TILE_RENDER_H / 2;
 
       // Detection range circle (faint)
       const distToPlayer = Math.abs(enemy.x - this.player.x) + Math.abs(enemy.y - this.player.y);
@@ -1693,54 +1810,52 @@ class ExplorationScene extends Scene {
       }
 
       if (enemy.isBoss) {
-        // Boss: larger display with pulsing red aura
+        // Boss: larger display with pulsing red aura (ビルボード方式)
         const aura = 0.2 + 0.15 * Math.sin(now / 300);
         renderer.drawGlow(centerX, centerY, TILE_SIZE * 1.2, '#FF2222', aura);
         renderer.drawGlow(centerX, centerY, TILE_SIZE * 0.7, '#FF6644', aura * 0.6);
 
         if (PIXEL_CHARS[pixelType]) {
-          // Boss uses scale=4 for larger appearance
-          renderer.drawPixelChar(ex - 6, ey - 8, 4, pixelType, { direction: 'down', frame: Math.floor(now / 600) % 2 });
+          const bossCharH = 48; // 12rows * 4scale
+          const bossDrawY = ey + TILE_RENDER_H - bossCharH;
+          renderer.drawPixelChar(ex - 6, bossDrawY, 4, pixelType, { direction: 'down', frame: Math.floor(now / 600) % 2 });
         } else {
-          // Fallback boss rendering
           ctx.fillStyle = '#8B0000';
           ctx.beginPath();
           ctx.moveTo(centerX, ey + 2);
-          ctx.lineTo(ex + TILE_SIZE - 2, ey + TILE_SIZE - 2);
-          ctx.lineTo(ex + 2, ey + TILE_SIZE - 2);
+          ctx.lineTo(ex + TILE_SIZE - 2, ey + TILE_RENDER_H - 2);
+          ctx.lineTo(ex + 2, ey + TILE_RENDER_H - 2);
           ctx.closePath();
           ctx.fill();
-          // Boss eye
           ctx.fillStyle = '#FF4444';
           ctx.beginPath();
-          ctx.arc(centerX, ey + TILE_SIZE * 0.4, 3, 0, Math.PI * 2);
+          ctx.arc(centerX, ey + TILE_RENDER_H * 0.4, 3, 0, Math.PI * 2);
           ctx.fill();
         }
       } else {
-        // Normal enemy with pixel char
+        // Normal enemy with pixel char (ビルボード方式)
         if (PIXEL_CHARS[pixelType]) {
-          renderer.drawPixelChar(ex + 2, ey, 3, pixelType, {
+          const enemyCharH = 24; // 8rows * 3scale
+          const enemyDrawY = ey + TILE_RENDER_H - enemyCharH;
+          renderer.drawPixelChar(ex + 2, enemyDrawY, 3, pixelType, {
             direction: 'down',
             frame: Math.floor(now / 400) % 2,
           });
         } else {
-          // Fallback: triangle-shaped monster
           const bodyColor = enemy.chasing ? '#CC3333' : '#884488';
           ctx.fillStyle = bodyColor;
           ctx.beginPath();
           ctx.moveTo(centerX, ey + 4);
-          ctx.lineTo(ex + TILE_SIZE - 6, ey + TILE_SIZE - 4);
-          ctx.lineTo(ex + 6, ey + TILE_SIZE - 4);
+          ctx.lineTo(ex + TILE_SIZE - 6, ey + TILE_RENDER_H - 4);
+          ctx.lineTo(ex + 6, ey + TILE_RENDER_H - 4);
           ctx.closePath();
           ctx.fill();
-          // Eyes
           ctx.fillStyle = '#FFF';
-          ctx.fillRect(ex + 11, ey + 14, 3, 3);
-          ctx.fillRect(ex + 18, ey + 14, 3, 3);
+          ctx.fillRect(ex + 11, ey + 10, 3, 3);
+          ctx.fillRect(ex + 18, ey + 10, 3, 3);
         }
 
         if (enemy.chasing) {
-          // Chase indicator with glow and bounce
           const bounce = Math.abs(Math.sin(now / 150)) * 4;
           renderer.drawGlow(centerX, ey - 6 - bounce, 10, '#FF4444', 0.7);
           renderer.drawText('!', centerX, ey - 16 - bounce,
@@ -1753,29 +1868,33 @@ class ExplorationScene extends Scene {
 
   drawPlayer(renderer) {
     const ctx = renderer.ctx;
-    const px = this.player.pixelX - this.camera.x;
-    const py = this.player.pixelY - this.camera.y;
+    const scr = this._pixelToScreen(this.player.pixelX, this.player.pixelY);
+    const px = scr.x;
+    const py = scr.y;
+
+    // キャラの足元をタイルの下端に合わせる (ビルボード方式)
+    const charH = 27; // 9rows * 3scale
+    const charDrawY = py + TILE_RENDER_H - charH;
 
     // Foot shadow
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
     ctx.beginPath();
-    ctx.ellipse(px + TILE_SIZE / 2, py + TILE_SIZE - 1, TILE_SIZE * 0.32, 3, 0, 0, Math.PI * 2);
+    ctx.ellipse(px + TILE_SIZE / 2, py + TILE_RENDER_H - 1, TILE_SIZE * 0.32, 2, 0, 0, Math.PI * 2);
     ctx.fill();
 
     // Determine season for glow
     const leader = (this.game.state.party && this.game.state.party.getLeader) ? this.game.state.party.getLeader() : null;
     const season = leader ? leader.currentSeason : null;
 
-    // Draw player using pixel character system (scale=3)
+    // Draw player using pixel character system (scale=3, Y圧縮なし)
     if (PIXEL_CHARS['hero']) {
-      renderer.drawPixelChar(px + 2, py - 2, 3, 'hero', {
+      renderer.drawPixelChar(px + 2, charDrawY, 3, 'hero', {
         direction: this.player.direction,
         frame: this.player.moving ? this.player.animFrame : 0,
         season: season,
       });
     } else {
-      // Fallback: simple colored rectangle
-      renderer.drawSprite(px + 4, py + 2, TILE_SIZE - 8, TILE_SIZE - 4, {
+      renderer.drawSprite(px + 4, charDrawY, TILE_SIZE - 8, charH, {
         bodyColor: '#4488CC', headColor: '#FFD699', season: season,
       });
     }
