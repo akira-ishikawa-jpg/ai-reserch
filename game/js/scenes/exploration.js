@@ -137,9 +137,10 @@ class ExplorationScene extends Scene {
   // ==========================================
 
   loadMap(mapId, targetX, targetY) {
+    console.log('[Exploration] loadMap:', mapId);
     const mapDef = MAPS[mapId];
     if (!mapDef) {
-      console.error('Map not found:', mapId);
+      console.error('[Exploration] Map not found:', mapId, 'Available:', Object.keys(MAPS));
       return;
     }
 
@@ -237,19 +238,23 @@ class ExplorationScene extends Scene {
   // ==========================================
 
   update(dt) {
-    if (this.transitioning) {
-      this.updateTransition(dt);
-      return;
-    }
-    if (this.game.renderer.isFading()) return;
+    try {
+      if (this.transitioning) {
+        this.updateTransition(dt);
+        return;
+      }
+      if (this.game.renderer.isFading()) return;
 
-    this.updatePlayerMovement(dt);
-    this.updateEnemySymbols(dt);
-    this.updateRespawnTimers(dt);
-    this.updateCamera();
-    this.updateParticles(dt);
-    this.updateTimers(dt);
-    this.checkInteraction();
+      this.updatePlayerMovement(dt);
+      this.updateEnemySymbols(dt);
+      this.updateRespawnTimers(dt);
+      this.updateCamera();
+      this.updateParticles(dt);
+      this.updateTimers(dt);
+      this.checkInteraction();
+    } catch(e) {
+      console.error('[Exploration] update error:', e.message, e.stack);
+    }
   }
 
   // ==========================================
@@ -807,7 +812,11 @@ class ExplorationScene extends Scene {
   // ==========================================
 
   draw(renderer) {
-    if (!this.currentMap) return;
+    if (!this.currentMap) {
+      renderer.drawText('Loading map...', GAME_WIDTH/2, GAME_HEIGHT/2, {size: 24, align: 'center', color: '#FFF'});
+      return;
+    }
+    try {
 
     const map = this.currentMap;
     const colors = map.tileColors;
@@ -874,6 +883,10 @@ class ExplorationScene extends Scene {
     // 13. 操作ヒント
     renderer.drawText('WASD:移動  Space:調べる', GAME_WIDTH / 2, GAME_HEIGHT - 24,
       { size: 11, color: 'rgba(255,255,255,0.4)', align: 'center', shadow: false });
+    } catch(e) {
+      console.error('[Exploration] draw error:', e.message, e.stack);
+      renderer.drawText('Draw Error: ' + e.message, 10, 10, {size: 14, color: '#F00'});
+    }
   }
 
   // ==========================================
