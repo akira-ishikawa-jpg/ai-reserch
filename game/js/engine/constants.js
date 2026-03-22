@@ -56,6 +56,18 @@ function getSeasonMultiplier(attackSeason, targetSeason) {
   return 1.8;                  // Opposite: big damage
 }
 
+// Global light direction (HD-2D lighting)
+const GLOBAL_LIGHT = {
+  angle: 315,           // 度（左上）
+  dirX: -0.707,         // cos(315°)
+  dirY: -0.707,         // sin(315°)
+  shadowOffsetX: 2,     // 影のオフセット（右に2px）
+  shadowOffsetY: 2,     // 影のオフセット（下に2px）
+  shadowColor: 'rgba(20,10,30,0.25)',
+  highlightColor: 'rgba(255,250,240,0.3)',
+  ambientColor: 'rgba(255,248,235,1)',  // 暖かい環境光
+};
+
 // Scene names
 const SCENES = {
   TITLE: 'title',

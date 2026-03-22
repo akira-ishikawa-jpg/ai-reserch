@@ -911,28 +911,64 @@ class ExplorationScene extends Scene {
         const deco = this.tileDecorations && this.tileDecorations[ty] ? this.tileDecorations[ty][tx] : null;
 
         if (tile === TILE.FLOOR || tile === TILE.EMPTY || tile === TILE.ENTRANCE || tile === TILE.DOOR) {
-          // --- Floor tile ---
+          // --- Floor tile: 石畳テクスチャ (4x4 grid of 8x8 stones) ---
           const baseColor = colors[tile] || '#CCC';
-          ctx.fillStyle = baseColor;
-          ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+          const bc = this._parseHex(baseColor);
+          const stoneSize = 8; // 32 / 4 = 8px per stone
 
-          // Subtle checker shade
-          if (deco && deco.checkerOffset === 1) {
-            ctx.fillStyle = 'rgba(0,0,0,0.04)';
-            ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+          for (let sty = 0; sty < 4; sty++) {
+            for (let stx = 0; stx < 4; stx++) {
+              const stoneX = sx + stx * stoneSize;
+              const stoneY = sy + sty * stoneSize;
+
+              // Per-stone random color variation (±5%)
+              const rnd = seededRandom(tx * 4 + stx, ty * 4 + sty);
+              const variation = (rnd - 0.5) * 0.1; // ±5%
+              const r = Math.min(255, Math.max(0, Math.round(bc[0] * (1 + variation))));
+              const g = Math.min(255, Math.max(0, Math.round(bc[1] * (1 + variation))));
+              const b = Math.min(255, Math.max(0, Math.round(bc[2] * (1 + variation))));
+
+              // Stone body
+              ctx.fillStyle = `rgb(${r},${g},${b})`;
+              ctx.fillRect(stoneX, stoneY, stoneSize, stoneSize);
+
+              // Left & top highlight (light from top-left)
+              ctx.fillStyle = GLOBAL_LIGHT.highlightColor;
+              ctx.fillRect(stoneX, stoneY, stoneSize, 1); // top edge
+              ctx.fillRect(stoneX, stoneY, 1, stoneSize); // left edge
+
+              // Right & bottom shadow
+              ctx.fillStyle = 'rgba(20,10,30,0.12)';
+              ctx.fillRect(stoneX + stoneSize - 1, stoneY, 1, stoneSize); // right edge
+              ctx.fillRect(stoneX, stoneY + stoneSize - 1, stoneSize, 1); // bottom edge
+            }
           }
 
-          // Stone joint lines (thin grid within tile)
-          ctx.fillStyle = 'rgba(0,0,0,0.06)';
-          ctx.fillRect(sx, sy + TILE_SIZE / 2, TILE_SIZE, 1);               // horizontal joint
-          ctx.fillRect(sx + TILE_SIZE / 2 + (deco && deco.checkerOffset ? 8 : 0), sy, 1, TILE_SIZE); // vertical joint offset per row
+          // 目地 (mortar lines between stones)
+          ctx.fillStyle = 'rgba(20,10,30,0.10)';
+          for (let i = 1; i < 4; i++) {
+            ctx.fillRect(sx, sy + i * stoneSize, TILE_SIZE, 1); // horizontal joints
+            ctx.fillRect(sx + i * stoneSize, sy, 1, TILE_SIZE); // vertical joints
+          }
 
-          // Random decorative pebbles
-          if (deco && deco.hasDot) {
-            ctx.fillStyle = 'rgba(0,0,0,0.06)';
-            ctx.beginPath();
-            ctx.arc(sx + deco.dotX, sy + deco.dotY, deco.dotSize, 0, Math.PI * 2);
-            ctx.fill();
+          // Ambient Occlusion: 壁に隣接する床の壁側端2pxを暗く
+          const aboveTile = ty > 0 ? map.tiles[ty - 1][tx] : TILE.WALL;
+          const leftTile  = tx > 0 ? map.tiles[ty][tx - 1] : TILE.WALL;
+          const wallAbove = aboveTile === TILE.WALL;
+          const wallLeft  = leftTile === TILE.WALL;
+
+          if (wallAbove) {
+            ctx.fillStyle = 'rgba(20,10,30,0.12)';
+            ctx.fillRect(sx, sy, TILE_SIZE, 2);
+          }
+          if (wallLeft) {
+            ctx.fillStyle = 'rgba(20,10,30,0.12)';
+            ctx.fillRect(sx, sy, 2, TILE_SIZE);
+          }
+          // Corner AO patch (both above and left are walls)
+          if (wallAbove && wallLeft) {
+            ctx.fillStyle = 'rgba(20,10,30,0.18)';
+            ctx.fillRect(sx, sy, 4, 4);
           }
 
           // Entrance / exit: light pillar effect
@@ -951,43 +987,82 @@ class ExplorationScene extends Scene {
           }
 
         } else if (tile === TILE.WALL) {
-          // --- Wall tile ---
+          // --- Wall tile: 3D化 with unified lighting ---
           const wallBase = colors[tile] || '#888';
-          renderer.drawGradientRect(sx, sy, TILE_SIZE, TILE_SIZE,
-            this._lightenColor(wallBase, 30), this._darkenColor(wallBase, 20));
+          const wc = this._parseHex(wallBase);
 
-          // Strong top-face highlight (3D feel)
-          ctx.fillStyle = 'rgba(255,255,255,0.25)';
-          ctx.fillRect(sx, sy, TILE_SIZE, 3);
-          // Left edge highlight
-          ctx.fillStyle = 'rgba(255,255,255,0.12)';
-          ctx.fillRect(sx, sy, 2, TILE_SIZE);
-          // Bottom shadow
-          ctx.fillStyle = 'rgba(0,0,0,0.3)';
-          ctx.fillRect(sx, sy + TILE_SIZE - 2, TILE_SIZE, 2);
-          // Right shadow
-          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          // Wall body with gradient + seededRandom color variation
+          const rndW = seededRandom(tx, ty, 42);
+          const wVar = (rndW - 0.5) * 0.08; // ±4% variation
+          const wr = Math.min(255, Math.max(0, Math.round(wc[0] * (1 + wVar))));
+          const wg = Math.min(255, Math.max(0, Math.round(wc[1] * (1 + wVar))));
+          const wb = Math.min(255, Math.max(0, Math.round(wc[2] * (1 + wVar))));
+
+          renderer.drawGradientRect(sx, sy, TILE_SIZE, TILE_SIZE,
+            `rgb(${Math.min(255, wr + 30)},${Math.min(255, wg + 30)},${Math.min(255, wb + 30)})`,
+            `rgb(${Math.max(0, wr - 20)},${Math.max(0, wg - 20)},${Math.max(0, wb - 20)})`);
+
+          // Additional seededRandom texture splotches
+          const rndW2 = seededRandom(tx, ty, 77);
+          if (rndW2 > 0.4) {
+            ctx.fillStyle = rndW2 > 0.7 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+            const patchX = sx + Math.floor(seededRandom(tx, ty, 100) * (TILE_SIZE - 8));
+            const patchY = sy + Math.floor(seededRandom(tx, ty, 200) * (TILE_SIZE - 6));
+            ctx.fillRect(patchX, patchY, 6, 5);
+          }
+
+          // Mortar lines
+          if (rndW > 0.3) {
+            ctx.fillStyle = 'rgba(0,0,0,0.07)';
+            ctx.fillRect(sx + 3, sy + TILE_SIZE / 2 - 1, TILE_SIZE - 6, 1);
+          }
+          if (rndW > 0.5) {
+            const off = (ty % 2 === 0) ? TILE_SIZE * 0.6 : TILE_SIZE * 0.3;
+            ctx.fillStyle = 'rgba(0,0,0,0.06)';
+            ctx.fillRect(sx + off, sy + 2, 1, TILE_SIZE / 2 - 3);
+          }
+
+          // 3D edges with adjacency check
+          const wallAboveW = ty > 0 && map.tiles[ty - 1][tx] === TILE.WALL;
+          const wallLeftW  = tx > 0 && map.tiles[ty][tx - 1] === TILE.WALL;
+
+          // Top face (3px) — only if no wall above
+          if (!wallAboveW) {
+            const topR = Math.min(255, wr + 50);
+            const topG = Math.min(255, wg + 50);
+            const topB = Math.min(255, wb + 50);
+            ctx.fillStyle = `rgb(${topR},${topG},${topB})`;
+            ctx.fillRect(sx, sy, TILE_SIZE, 3);
+            // Additional highlight overlay on top face
+            ctx.fillStyle = GLOBAL_LIGHT.highlightColor;
+            ctx.fillRect(sx, sy, TILE_SIZE, 3);
+          }
+
+          // Left edge highlight (2px) — only if no wall to the left
+          if (!wallLeftW) {
+            ctx.fillStyle = GLOBAL_LIGHT.highlightColor;
+            ctx.fillRect(sx, sy, 2, TILE_SIZE);
+          }
+
+          // Right edge shadow (2px)
+          ctx.fillStyle = 'rgba(20,10,30,0.15)';
           ctx.fillRect(sx + TILE_SIZE - 2, sy, 2, TILE_SIZE);
 
-          // Stone texture: random color splotches
-          if (deco) {
-            const seed = deco.stoneVariant;
-            // Horizontal mortar line
-            if (seed < 3) {
-              ctx.fillStyle = 'rgba(0,0,0,0.07)';
-              ctx.fillRect(sx + 3, sy + TILE_SIZE / 2 - 1, TILE_SIZE - 6, 1);
-            }
-            // Vertical mortar line (offset for brick pattern)
-            if (seed < 2) {
-              const off = deco.checkerOffset ? TILE_SIZE * 0.6 : TILE_SIZE * 0.3;
-              ctx.fillStyle = 'rgba(0,0,0,0.06)';
-              ctx.fillRect(sx + off, sy + 2, 1, TILE_SIZE / 2 - 3);
-            }
-            // Small color variation patches
-            if (deco.hasDot) {
-              ctx.fillStyle = seed % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
-              ctx.fillRect(sx + deco.dotX - 2, sy + deco.dotY - 2, 6, 5);
-            }
+          // Bottom edge shadow (2px)
+          ctx.fillStyle = 'rgba(20,10,30,0.2)';
+          ctx.fillRect(sx, sy + TILE_SIZE - 2, TILE_SIZE, 2);
+
+          // Drop shadow (offset 2px right, 2px down) — cast onto adjacent floor
+          // Only draw shadow on right neighbor if it's a floor
+          const rightTile = (tx + 1 < map.width) ? map.tiles[ty][tx + 1] : TILE.WALL;
+          const belowTile = (ty + 1 < map.height) ? map.tiles[ty + 1][tx] : TILE.WALL;
+          if (rightTile !== TILE.WALL) {
+            ctx.fillStyle = GLOBAL_LIGHT.shadowColor;
+            ctx.fillRect(sx + TILE_SIZE, sy + GLOBAL_LIGHT.shadowOffsetY, GLOBAL_LIGHT.shadowOffsetX, TILE_SIZE);
+          }
+          if (belowTile !== TILE.WALL) {
+            ctx.fillStyle = GLOBAL_LIGHT.shadowColor;
+            ctx.fillRect(sx + GLOBAL_LIGHT.shadowOffsetX, sy + TILE_SIZE, TILE_SIZE, GLOBAL_LIGHT.shadowOffsetY);
           }
 
         } else if (tile === TILE.WATER) {

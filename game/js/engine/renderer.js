@@ -805,3 +805,11 @@ const PIXEL_CHARS = {
     },
   },
 };
+
+// Deterministic random for tile decoration (integer-only, fast)
+function seededRandom(x, y, seed = 0) {
+  let h = seed + x * 374761393 + y * 668265263;
+  h = (h ^ (h >> 13)) * 1274126177;
+  h = h ^ (h >> 16);
+  return (h & 0x7fffffff) / 0x7fffffff;
+}
