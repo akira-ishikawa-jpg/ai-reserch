@@ -1,0 +1,16 @@
+{
+  "name": "shiki-meguri-asset-generator",
+  "version": "1.0.0",
+  "description": "四季廻りの職人 - スプライト/タイル画像生成ツール",
+  "private": true,
+  "scripts": {
+    "generate:sprites": "node generate_sprites.js",
+    "generate:tiles": "node generate_tiles.js",
+    "generate:enemies": "node generate_enemies.js",
+    "generate:all": "node generate_sprites.js && node generate_tiles.js && node generate_enemies.js",
+    "generate": "bash generate_all.sh"
+  },
+  "dependencies": {
+    "canvas": "^2.11.2"
+  }
+}

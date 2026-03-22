@@ -95,6 +95,12 @@ class BattleScene extends Scene {
     this.resultData = null;
     this._afterMessage = null;
 
+    // BGM: バトル曲開始
+    if (this.game.audio && this.game.audio.ctx) {
+      const bgmId = (data.isBoss) ? 'boss' : 'battle';
+      this.game.audio.playBgm(bgmId);
+    }
+
     // Show encounter message, then go to startTurn
     this._showMessages(['敵が現れた!'], 'firstTurn');
   }

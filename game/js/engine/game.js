@@ -5,6 +5,7 @@ class Game {
     this.renderer = new Renderer(this.canvas);
     this.input = new InputManager();
     this.scenes = new SceneManager();
+    this.audio = typeof AudioManager !== 'undefined' ? new AudioManager() : null;
     this.lastTime = 0;
     this.running = false;
 

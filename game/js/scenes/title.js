@@ -142,6 +142,12 @@ class TitleScene extends Scene {
       const enterPressed = this.game.input.isJustPressed('Enter') || this.game.input.isJustPressed(' ');
       const tap = this.game.input.consumeTap();
 
+      // Init audio on first interaction and start title BGM
+      if ((enterPressed || tap) && this.game.audio && !this.game.audio.ctx) {
+        this.game.audio.init();
+        this.game.audio.playBgm('title');
+      }
+
       let confirmed = enterPressed;
 
       // タップによるメニュー選択
@@ -168,7 +174,15 @@ class TitleScene extends Scene {
   // -----------------------------------------------
   _startGame() {
     this.isStarting = true;
-    this.game.renderer.startFade(1, 0.03); // フェードアウト
+    // Initialize audio on first user interaction
+    if (this.game.audio && !this.game.audio.ctx) {
+      this.game.audio.init();
+    }
+    if (this.game.audio) {
+      this.game.audio.playSe('se_confirm');
+      this.game.audio.stopBgm(0.8);
+    }
+    this.game.renderer.startFade(1, 0.03);
   }
 
   // -----------------------------------------------

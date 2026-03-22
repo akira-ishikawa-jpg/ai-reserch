@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>四季廻りの職人 — アセット生成ツール (ブラウザ版)</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #1a1a2e;
+    color: #eee;
+    font-family: 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif;
+    padding: 20px;
+  }
+  h1 { color: #FFB7C5; margin-bottom: 10px; font-size: 1.6em; }
+  h2 { color: #88CC88; margin: 20px 0 8px; font-size: 1.2em; border-bottom: 1px solid #333; padding-bottom: 4px; }
+  .controls { margin: 16px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    background: #334;
+    color: #eee;
+    border: 1px solid #556;
+    padding: 8px 18px;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 14px;
+  }
+  button:hover { background: #445; }
+  button.primary { background: #4488CC; border-color: #66AADD; }
+  button.primary:hover { background: #5599DD; }
+  button.success { background: #2E8B57; border-color: #3EAB67; }
+  button.success:hover { background: #3EAB67; }
+  .preview-section { margin: 10px 0; }
+  .preview-row {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .preview-item {
+    background: #222;
+    border: 1px solid #444;
+    padding: 8px;
+    border-radius: 4px;
+  }
+  .preview-item label { display: block; font-size: 12px; color: #aaa; margin-bottom: 4px; }
+  canvas { display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .preview-item canvas { background: #111; }
+  .scaled { border: 1px dashed #555; margin-top: 4px; }
+  .status {
+    background: #222;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+    font-size: 13px;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+  .status .ok { color: #88CC88; }
+  .status .warn { color: #FFAA44; }
+  .info { color: #888; font-size: 12px; margin: 4px 0; }
+</style>
+</head>
+<body>
+
+<h1>四季廻りの職人 — アセット生成ツール</h1>
+<p class="info">Node.js不要。ブラウザ上でCanvas APIを使ってスプライトシートとタイルセットのPNG画像を生成します。</p>
+
+<div class="controls">
+  <button class="primary" onclick="generateAll()">全アセット生成</button>
+  <button onclick="generateSprites()">キャラのみ</button>
+  <button onclick="generateEnemies()">敵のみ</button>
+  <button onclick="generateTiles()">タイルのみ</button>
+  <button class="success" onclick="downloadAll()">全てダウンロード</button>
+</div>
+
+<div id="status" class="status"></div>
+
+<h2>キャラクタースプライト (32x48 per frame, 96x192 per sheet)</h2>
+<div class="preview-row" id="char-preview"></div>
+
+<h2>敵スプライト (64x64 per frame)</h2>
+<div class="preview-row" id="enemy-preview"></div>
+
+<h2>ボススプライト (128x128 per frame)</h2>
+<div class="preview-row" id="boss-preview"></div>
+
+<h2>タイルセット (32x32 per tile)</h2>
+<div class="preview-row" id="tile-preview"></div>
+
+<script>
+// ==========================================
+// ユーティリティ
+// ==========================================
+const log = (() => {
+  const el = document.getElementById('status');
+  return (msg, cls = 'ok') => {
+    el.innerHTML += `<div class="${cls}">${msg}</div>`;
+    el.scrollTop = el.scrollHeight;
+  };
+})();
+
+function setPixel(ctx, x, y, color) {
+  ctx.fillStyle = color;
+  ctx.fillRect(x, y, 1, 1);
+}
+
+function drawEllipseShadow(ctx, cx, cy, rx, ry) {
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  for (let dx = -rx; dx <= rx; dx++) {
+    for (let dy = -ry; dy <= ry; dy++) {
+      if ((dx*dx)/(rx*rx) + (dy*dy)/(ry*ry) <= 1) {
+        ctx.fillRect(cx+dx, cy+dy, 1, 1);
+      }
+    }
+  }
+}
+
+function drawEllipse(ctx, cx, cy, rx, ry, color) {
+  ctx.fillStyle = color;
+  for (let dy = -ry; dy <= ry; dy++) {
+    for (let dx = -rx; dx <= rx; dx++) {
+      if ((dx*dx)/(rx*rx) + (dy*dy)/(ry*ry) <= 1) ctx.fillRect(cx+dx, cy+dy, 1, 1);
+    }
+  }
+}
+
+function drawCircle(ctx, cx, cy, r, color) {
+  drawEllipse(ctx, cx, cy, r, r, color);
+}
+
+function hexToRgb(hex) {
+  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [0,0,0];
+}
+function clamp(v, mn, mx) { return v < mn ? mn : v > mx ? mx : v; }
+
+function noiseRect(ctx, x, y, w, h, baseColor, variance) {
+  const [r, g, b] = hexToRgb(baseColor);
+  for (let dy = 0; dy < h; dy++) {
+    for (let dx = 0; dx < w; dx++) {
+      const v = (Math.random()-0.5)*variance;
+      ctx.fillStyle = `rgb(${clamp(r+v,0,255)|0},${clamp(g+v,0,255)|0},${clamp(b+v,0,255)|0})`;
+      ctx.fillRect(x+dx, y+dy, 1, 1);
+    }
+  }
+}
+
+// ==========================================
+// 頭部描画 (共通)
+// ==========================================
+function drawHead(ctx, ox, oy, hairColor, hairDark, skinColor, skinShadow, eyeWhite, pupilColor, dir) {
+  const hx = ox+8, hy = oy+2;
+  ctx.fillStyle = hairColor;
+  ctx.fillRect(hx+2, hy, 12, 3);
+  ctx.fillRect(hx+1, hy+1, 14, 4);
+  ctx.fillRect(hx, hy+2, 16, 3);
+  ctx.fillStyle = hairDark;
+  ctx.fillRect(hx+3, hy, 10, 1);
+  ctx.fillRect(hx, hy+3, 2, 2);
+  ctx.fillRect(hx+14, hy+3, 2, 2);
+  const fx = hx+1, fy = hy+5;
+  ctx.fillStyle = skinColor;
+  ctx.fillRect(fx, fy, 14, 8);
+  ctx.fillRect(fx+1, fy+8, 12, 2);
+  ctx.fillStyle = skinShadow;
+  ctx.fillRect(fx, fy+6, 2, 2);
+  ctx.fillRect(fx+12, fy+6, 2, 2);
+  ctx.fillRect(fx+2, fy+8, 10, 1);
+  if (dir === 'down' || dir === 'left' || dir === 'right') {
+    const eyeY = fy+2;
+    if (dir === 'down') {
+      ctx.fillStyle = eyeWhite;
+      ctx.fillRect(fx+3, eyeY, 3, 3); ctx.fillRect(fx+8, eyeY, 3, 3);
+      ctx.fillStyle = pupilColor;
+      ctx.fillRect(fx+4, eyeY+1, 2, 2); ctx.fillRect(fx+9, eyeY+1, 2, 2);
+      ctx.fillStyle = '#FFF';
+      ctx.fillRect(fx+5, eyeY, 1, 1); ctx.fillRect(fx+10, eyeY, 1, 1);
+    } else if (dir === 'left') {
+      ctx.fillStyle = eyeWhite;
+      ctx.fillRect(fx+2, eyeY, 3, 3); ctx.fillRect(fx+7, eyeY, 3, 3);
+      ctx.fillStyle = pupilColor;
+      ctx.fillRect(fx+2, eyeY+1, 2, 2); ctx.fillRect(fx+7, eyeY+1, 2, 2);
+      ctx.fillStyle = '#FFF';
+      ctx.fillRect(fx+4, eyeY, 1, 1); ctx.fillRect(fx+9, eyeY, 1, 1);
+    } else {
+      ctx.fillStyle = eyeWhite;
+      ctx.fillRect(fx+4, eyeY, 3, 3); ctx.fillRect(fx+9, eyeY, 3, 3);
+      ctx.fillStyle = pupilColor;
+      ctx.fillRect(fx+5, eyeY+1, 2, 2); ctx.fillRect(fx+10, eyeY+1, 2, 2);
+      ctx.fillStyle = '#FFF';
+      ctx.fillRect(fx+4, eyeY, 1, 1); ctx.fillRect(fx+9, eyeY, 1, 1);
+    }
+    ctx.fillStyle = skinShadow;
+    ctx.fillRect(fx+5, fy+6, 4, 1);
+  }
+}
+
+// ==========================================
+// キャラクター描画
+// ==========================================
+function drawHero(ctx, ox, oy, dir, frame) {
+  const c = { hair:'#E8C840', hairDark:'#B89828', skin:'#FFD699', skinShadow:'#EEBB77', eyeWhite:'#FFF', pupil:'#2244AA', armor:'#4488CC', armorDark:'#336699', armorLight:'#66AADD', belt:'#8B6914', pants:'#334466', boots:'#443322', bootsDark:'#332211' };
+  drawEllipseShadow(ctx, ox+16, oy+46, 7, 2);
+  const by = oy+17;
+  ctx.fillStyle = c.armorDark; ctx.fillRect(ox+6, by, 20, 16);
+  ctx.fillStyle = c.armor; ctx.fillRect(ox+7, by+1, 18, 14);
+  ctx.fillStyle = c.armorLight; ctx.fillRect(ox+8, by+1, 4, 3); ctx.fillRect(ox+7, by+1, 2, 6);
+  ctx.fillStyle = c.belt; ctx.fillRect(ox+7, by+12, 18, 2);
+  ctx.fillStyle = c.armorDark; ctx.fillRect(ox+4, by+1, 4, 5); ctx.fillRect(ox+24, by+1, 4, 5);
+  ctx.fillStyle = c.armor; ctx.fillRect(ox+5, by+2, 3, 3); ctx.fillRect(ox+24, by+2, 3, 3);
+  if (dir === 'down' || dir === 'left') {
+    ctx.fillStyle = '#8B4513'; ctx.fillRect(ox+24, oy+6, 2, 5);
+    ctx.fillStyle = '#AABBCC'; ctx.fillRect(ox+24, oy+1, 2, 6);
+    ctx.fillStyle = '#B8860B'; ctx.fillRect(ox+23, oy+6, 4, 1);
+  }
+  ctx.fillStyle = c.pants; ctx.fillRect(ox+9, by+14, 14, 6);
+  const legY = by+18;
+  if (frame === 0) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+10, legY, 5, 8); ctx.fillRect(ox+17, legY, 5, 8);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+10, legY+6, 5, 2); ctx.fillRect(ox+17, legY+6, 5, 2);
+  } else if (frame === 1) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+8, legY-1, 5, 8); ctx.fillRect(ox+19, legY+1, 5, 7);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+8, legY+5, 5, 2); ctx.fillRect(ox+19, legY+6, 5, 2);
+  } else {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+19, legY-1, 5, 8); ctx.fillRect(ox+8, legY+1, 5, 7);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+19, legY+5, 5, 2); ctx.fillRect(ox+8, legY+6, 5, 2);
+  }
+  drawHead(ctx, ox, oy, c.hair, c.hairDark, c.skin, c.skinShadow, c.eyeWhite, c.pupil, dir);
+}
+
+function drawTsumugi(ctx, ox, oy, dir, frame) {
+  const c = { hair:'#66BB66', hairDark:'#448844', skin:'#FFE0BD', skinShadow:'#EECCAA', eyeWhite:'#FFF', pupil:'#336633', robe:'#EEEEDD', robeDark:'#CCCCBB', robeLight:'#FFF', accent:'#88CC88', accentDark:'#669966', skirt:'#DDDDCC', boots:'#998877', bootsDark:'#776655' };
+  drawEllipseShadow(ctx, ox+16, oy+46, 7, 2);
+  const by = oy+17;
+  ctx.fillStyle = c.robeDark; ctx.fillRect(ox+7, by, 18, 20);
+  ctx.fillStyle = c.robe; ctx.fillRect(ox+8, by+1, 16, 18);
+  ctx.fillStyle = c.robeLight; ctx.fillRect(ox+9, by+1, 4, 4);
+  ctx.fillStyle = c.accent; ctx.fillRect(ox+8, by+8, 16, 3);
+  ctx.fillStyle = c.accentDark; ctx.fillRect(ox+8, by+10, 16, 1);
+  ctx.fillStyle = c.skirt; ctx.fillRect(ox+6, by+12, 20, 8);
+  ctx.fillStyle = c.robeDark; ctx.fillRect(ox+6, by+18, 20, 2);
+  ctx.fillStyle = c.accent; ctx.fillRect(ox+7, by+17, 18, 1);
+  ctx.fillStyle = c.robe; ctx.fillRect(ox+4, by+1, 4, 8); ctx.fillRect(ox+24, by+1, 4, 8);
+  ctx.fillStyle = c.accent; ctx.fillRect(ox+4, by+7, 4, 2); ctx.fillRect(ox+24, by+7, 4, 2);
+  if (dir === 'down' || dir === 'right') {
+    ctx.fillStyle = '#CC9966'; ctx.fillRect(ox+26, by+5, 3, 2);
+    ctx.fillStyle = '#44DDAA'; ctx.fillRect(ox+25, by+7, 5, 6);
+    ctx.fillStyle = '#339977'; ctx.fillRect(ox+27, by+9, 2, 3);
+    ctx.fillStyle = '#AAFFDD'; ctx.fillRect(ox+26, by+7, 1, 2);
+  }
+  const legY = by+19;
+  if (frame === 0) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+11, legY, 4, 7); ctx.fillRect(ox+17, legY, 4, 7);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+11, legY+5, 4, 2); ctx.fillRect(ox+17, legY+5, 4, 2);
+  } else if (frame === 1) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+9, legY, 4, 6); ctx.fillRect(ox+19, legY+1, 4, 6);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+9, legY+4, 4, 2); ctx.fillRect(ox+19, legY+5, 4, 2);
+  } else {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+19, legY, 4, 6); ctx.fillRect(ox+9, legY+1, 4, 6);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+19, legY+4, 4, 2); ctx.fillRect(ox+9, legY+5, 4, 2);
+  }
+  drawHead(ctx, ox, oy, c.hair, c.hairDark, c.skin, c.skinShadow, c.eyeWhite, c.pupil, dir);
+}
+
+function drawNpcGuild(ctx, ox, oy, dir, frame) {
+  const c = { hair:'#CCC', hairDark:'#999', skin:'#F5DEB3', skinShadow:'#DDCC99', eyeWhite:'#FFF', pupil:'#555', robe:'#8B6914', robeDark:'#6B4904', robeLight:'#AA8834', belt:'#554433', boots:'#443322', bootsDark:'#332211' };
+  drawEllipseShadow(ctx, ox+16, oy+46, 7, 2);
+  const by = oy+17;
+  ctx.fillStyle = c.robeDark; ctx.fillRect(ox+6, by, 20, 22);
+  ctx.fillStyle = c.robe; ctx.fillRect(ox+7, by+1, 18, 20);
+  ctx.fillStyle = c.robeLight; ctx.fillRect(ox+8, by+1, 5, 4);
+  ctx.fillStyle = c.belt; ctx.fillRect(ox+7, by+10, 18, 2);
+  ctx.fillStyle = c.robeDark; ctx.fillRect(ox+5, by+16, 22, 6);
+  ctx.fillStyle = c.robe; ctx.fillRect(ox+6, by+16, 20, 5);
+  ctx.fillStyle = c.robe; ctx.fillRect(ox+3, by+2, 5, 10); ctx.fillRect(ox+24, by+2, 5, 10);
+  ctx.fillStyle = c.robeDark; ctx.fillRect(ox+3, by+10, 5, 2); ctx.fillRect(ox+24, by+10, 5, 2);
+  const legY = by+21;
+  ctx.fillStyle = c.boots; ctx.fillRect(ox+11, legY, 4, 5); ctx.fillRect(ox+17, legY, 4, 5);
+  ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+11, legY+3, 4, 2); ctx.fillRect(ox+17, legY+3, 4, 2);
+  drawHead(ctx, ox, oy, c.hair, c.hairDark, c.skin, c.skinShadow, c.eyeWhite, c.pupil, dir);
+  if (dir === 'down') {
+    ctx.fillStyle = '#DDD'; ctx.fillRect(ox+11, oy+14, 10, 4); ctx.fillRect(ox+13, oy+18, 6, 2);
+    ctx.fillStyle = '#BBB'; ctx.fillRect(ox+12, oy+16, 8, 1);
+  }
+}
+
+function drawNpcInn(ctx, ox, oy, dir, frame) {
+  const c = { hair:'#8B4513', hairDark:'#6B3310', skin:'#F5DEB3', skinShadow:'#DDCC99', eyeWhite:'#FFF', pupil:'#333', shirt:'#7B3F00', shirtDark:'#5B2F00', apron:'#FFF', apronDark:'#DDD', pants:'#554433', boots:'#443322', bootsDark:'#332211' };
+  drawEllipseShadow(ctx, ox+16, oy+46, 7, 2);
+  const by = oy+17;
+  ctx.fillStyle = c.shirtDark; ctx.fillRect(ox+7, by, 18, 14);
+  ctx.fillStyle = c.shirt; ctx.fillRect(ox+8, by+1, 16, 12);
+  ctx.fillStyle = c.apron; ctx.fillRect(ox+10, by+3, 12, 12);
+  ctx.fillStyle = c.apronDark; ctx.fillRect(ox+10, by+3, 12, 1); ctx.fillRect(ox+10, by+13, 12, 2);
+  ctx.fillStyle = c.apron; ctx.fillRect(ox+8, by+3, 2, 1); ctx.fillRect(ox+22, by+3, 2, 1);
+  ctx.fillStyle = c.shirt; ctx.fillRect(ox+4, by+1, 4, 7); ctx.fillRect(ox+24, by+1, 4, 7);
+  ctx.fillStyle = c.pants; ctx.fillRect(ox+9, by+14, 14, 6);
+  const legY = by+19;
+  if (frame === 0) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+10, legY, 5, 7); ctx.fillRect(ox+17, legY, 5, 7);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+10, legY+5, 5, 2); ctx.fillRect(ox+17, legY+5, 5, 2);
+  } else if (frame === 1) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+8, legY, 5, 6); ctx.fillRect(ox+19, legY+1, 5, 6);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+8, legY+4, 5, 2); ctx.fillRect(ox+19, legY+5, 5, 2);
+  } else {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+19, legY, 5, 6); ctx.fillRect(ox+8, legY+1, 5, 6);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+19, legY+4, 5, 2); ctx.fillRect(ox+8, legY+5, 5, 2);
+  }
+  drawHead(ctx, ox, oy, c.hair, c.hairDark, c.skin, c.skinShadow, c.eyeWhite, c.pupil, dir);
+}
+
+function drawNpcMerchant(ctx, ox, oy, dir, frame) {
+  const c = { hair:'#6B4226', hairDark:'#4B2216', skin:'#FFDAB9', skinShadow:'#EEBB99', eyeWhite:'#FFF', pupil:'#333', hat:'#2E8B57', hatDark:'#1E6B37', hatBrim:'#3EAB67', shirt:'#3CB371', shirtDark:'#2E8B57', shirtLight:'#66D9A0', belt:'#8B6914', pants:'#6B5940', boots:'#554433', bootsDark:'#332211' };
+  drawEllipseShadow(ctx, ox+16, oy+46, 7, 2);
+  const by = oy+17;
+  ctx.fillStyle = c.shirtDark; ctx.fillRect(ox+7, by, 18, 14);
+  ctx.fillStyle = c.shirt; ctx.fillRect(ox+8, by+1, 16, 12);
+  ctx.fillStyle = c.shirtLight; ctx.fillRect(ox+9, by+1, 3, 4);
+  ctx.fillStyle = c.belt; ctx.fillRect(ox+7, by+11, 18, 2);
+  ctx.fillStyle = '#AA7722'; ctx.fillRect(ox+20, by+8, 5, 5);
+  ctx.fillStyle = '#885511'; ctx.fillRect(ox+20, by+8, 5, 1); ctx.fillRect(ox+21, by+10, 3, 1);
+  ctx.fillStyle = c.shirt; ctx.fillRect(ox+4, by+1, 4, 7); ctx.fillRect(ox+24, by+1, 4, 7);
+  ctx.fillStyle = c.pants; ctx.fillRect(ox+9, by+13, 14, 7);
+  const legY = by+19;
+  if (frame === 0) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+10, legY, 5, 7); ctx.fillRect(ox+17, legY, 5, 7);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+10, legY+5, 5, 2); ctx.fillRect(ox+17, legY+5, 5, 2);
+  } else if (frame === 1) {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+8, legY, 5, 6); ctx.fillRect(ox+19, legY+1, 5, 6);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+8, legY+4, 5, 2); ctx.fillRect(ox+19, legY+5, 5, 2);
+  } else {
+    ctx.fillStyle = c.boots; ctx.fillRect(ox+19, legY, 5, 6); ctx.fillRect(ox+8, legY+1, 5, 6);
+    ctx.fillStyle = c.bootsDark; ctx.fillRect(ox+19, legY+4, 5, 2); ctx.fillRect(ox+8, legY+5, 5, 2);
+  }
+  drawHead(ctx, ox, oy, c.hair, c.hairDark, c.skin, c.skinShadow, c.eyeWhite, c.pupil, dir);
+  ctx.fillStyle = c.hat; ctx.fillRect(ox+7, oy+1, 18, 5);
+  ctx.fillStyle = c.hatDark; ctx.fillRect(ox+7, oy+1, 18, 1); ctx.fillRect(ox+7, oy+5, 18, 1);
+  ctx.fillStyle = c.hatBrim; ctx.fillRect(ox+5, oy+5, 22, 2);
+  ctx.fillStyle = c.shirtLight; ctx.fillRect(ox+9, oy+2, 4, 2);
+}
+
+// ==========================================
+// 敵描画
+// ==========================================
+function drawFairy(ctx, ox, oy, frame) {
+  const ws = frame === 0 ? 0 : 4;
+  drawEllipse(ctx, ox+16-ws, oy+24, 10, 14-ws, 'rgba(255,200,220,0.7)');
+  drawEllipse(ctx, ox+16-ws, oy+24, 8, 12-ws, 'rgba(255,170,200,0.5)');
+  drawEllipse(ctx, ox+48+ws, oy+24, 10, 14-ws, 'rgba(255,200,220,0.7)');
+  drawEllipse(ctx, ox+48+ws, oy+24, 8, 12-ws, 'rgba(255,170,200,0.5)');
+  ctx.fillStyle = 'rgba(255,140,180,0.6)';
+  for (let i = -6; i <= 6; i++) {
+    setPixel(ctx, ox+16-ws+i, oy+24+((i*i)/8|0), 'rgba(255,140,180,0.6)');
+    setPixel(ctx, ox+48+ws+i, oy+24+((i*i)/8|0), 'rgba(255,140,180,0.6)');
+  }
+  const bx = ox+27, by = oy+18;
+  ctx.fillStyle = '#DDBBFF'; ctx.fillRect(bx, by+6, 10, 14);
+  ctx.fillStyle = '#BB99DD'; ctx.fillRect(bx, by+6, 10, 2); ctx.fillRect(bx, by+18, 10, 2);
+  drawCircle(ctx, bx+5, by+3, 5, '#DDBBFF');
+  drawCircle(ctx, bx+5, by+3, 4, '#EEDDFF');
+  ctx.fillStyle = '#FFF'; ctx.fillRect(bx+2, by+2, 3, 2); ctx.fillRect(bx+6, by+2, 3, 2);
+  ctx.fillStyle = '#6633AA'; ctx.fillRect(bx+3, by+2, 2, 2); ctx.fillRect(bx+7, by+2, 2, 2);
+  ctx.fillStyle = '#FFF'; setPixel(ctx, bx+3, by+2, '#FFF'); setPixel(ctx, bx+7, by+2, '#FFF');
+  ctx.fillStyle = '#BB88CC'; ctx.fillRect(bx+4, by+5, 3, 1);
+  ctx.fillStyle = '#EEDDFF'; ctx.fillRect(bx-3, by+8, 3, 8); ctx.fillRect(bx+10, by+8, 3, 8);
+  ctx.fillStyle = '#CCAAEE'; ctx.fillRect(bx-2, by+16, 14, 6);
+  ctx.fillStyle = '#DDBBFF'; ctx.fillRect(bx-1, by+16, 12, 5);
+  ctx.fillStyle = '#EEDDFF'; ctx.fillRect(bx+1, by+22, 3, 4); ctx.fillRect(bx+6, by+22, 3, 4);
+  const sp = frame===0?[[ox+12,oy+12],[ox+50,oy+14],[ox+30,oy+8]]:[[ox+10,oy+16],[ox+52,oy+10],[ox+35,oy+6]];
+  for (const [sx,sy] of sp) { ctx.fillStyle='#FFDD44'; setPixel(ctx,sx,sy,'#FFDD44'); setPixel(ctx,sx+1,sy,'#FFEE88'); }
+  drawCircle(ctx, ox+32, oy+28, 18, 'rgba(255,180,210,0.15)');
+}
+
+function drawBee(ctx, ox, oy, frame) {
+  const wY = frame===0?-6:-2;
+  drawEllipse(ctx, ox+18, oy+22+wY, 12, 6, 'rgba(200,220,240,0.5)');
+  drawEllipse(ctx, ox+18, oy+22+wY, 10, 4, 'rgba(180,200,220,0.3)');
+  drawEllipse(ctx, ox+46, oy+22+wY, 12, 6, 'rgba(200,220,240,0.5)');
+  drawEllipse(ctx, ox+46, oy+22+wY, 10, 4, 'rgba(180,200,220,0.3)');
+  drawEllipse(ctx, ox+32, oy+32, 14, 10, '#222');
+  drawEllipse(ctx, ox+32, oy+32, 13, 9, '#FFD700');
+  for (let s = 0; s < 5; s++) {
+    const sy = oy+26+s*4;
+    if (s%2===0) {
+      ctx.fillStyle = '#222';
+      for (let dx = -12; dx <= 12; dx++) {
+        const d1 = sy-(oy+32);
+        if ((dx*dx)/(13*13)+(d1*d1)/(9*9)<=1) ctx.fillRect(ox+32+dx, sy, 1, 2);
+      }
+    }
+  }
+  drawCircle(ctx, ox+32, oy+20, 7, '#222');
+  drawCircle(ctx, ox+32, oy+20, 6, '#333');
+  drawCircle(ctx, ox+28, oy+19, 3, '#F00');
+  drawCircle(ctx, ox+36, oy+19, 3, '#F00');
+  ctx.fillStyle = '#F44'; setPixel(ctx, ox+28, oy+18, '#F44'); setPixel(ctx, ox+36, oy+18, '#F44');
+  ctx.fillStyle = '#222';
+  ctx.fillRect(ox+29, oy+12, 1, 4); ctx.fillRect(ox+35, oy+12, 1, 4);
+  ctx.fillRect(ox+28, oy+11, 1, 2); ctx.fillRect(ox+36, oy+11, 1, 2);
+  ctx.fillStyle = '#FFF'; ctx.fillRect(ox+31, oy+42, 2, 5);
+  ctx.fillStyle = '#DDD'; ctx.fillRect(ox+31, oy+46, 2, 1);
+  ctx.fillStyle = '#333';
+  ctx.fillRect(ox+20,oy+34,3,1); ctx.fillRect(ox+19,oy+35,1,4);
+  ctx.fillRect(ox+21,oy+30,3,1); ctx.fillRect(ox+20,oy+31,1,3);
+  ctx.fillRect(ox+22,oy+38,3,1); ctx.fillRect(ox+21,oy+39,1,3);
+  ctx.fillRect(ox+41,oy+34,3,1); ctx.fillRect(ox+44,oy+35,1,4);
+  ctx.fillRect(ox+40,oy+30,3,1); ctx.fillRect(ox+43,oy+31,1,3);
+  ctx.fillRect(ox+39,oy+38,3,1); ctx.fillRect(ox+42,oy+39,1,3);
+}
+
+function drawFox(ctx, ox, oy, frame) {
+  const ts = frame===0?0:4;
+  drawEllipse(ctx, ox+14-ts, oy+30, 10, 14, '#FF6622');
+  drawEllipse(ctx, ox+14-ts, oy+28, 8, 12, '#FF8844');
+  drawEllipse(ctx, ox+10-ts, oy+18, 4, 5, '#FFF');
+  drawEllipse(ctx, ox+34, oy+38, 14, 10, '#CC6622');
+  drawEllipse(ctx, ox+34, oy+37, 13, 9, '#FF8844');
+  drawEllipse(ctx, ox+34, oy+40, 8, 6, '#FFCCAA');
+  ctx.fillStyle = '#FF8844';
+  ctx.fillRect(ox+24,oy+44,5,10); ctx.fillRect(ox+38,oy+44,5,10);
+  ctx.fillStyle = '#CC6622';
+  ctx.fillRect(ox+24,oy+52,5,2); ctx.fillRect(ox+38,oy+52,5,2);
+  ctx.fillStyle = '#FF8844';
+  ctx.fillRect(ox+18,oy+42,5,12); ctx.fillRect(ox+44,oy+42,5,12);
+  ctx.fillStyle = '#CC6622';
+  ctx.fillRect(ox+18,oy+52,5,2); ctx.fillRect(ox+44,oy+52,5,2);
+  drawEllipse(ctx, ox+34, oy+24, 10, 8, '#CC6622');
+  drawEllipse(ctx, ox+34, oy+23, 9, 7, '#FF8844');
+  drawEllipse(ctx, ox+30, oy+26, 4, 3, '#FFDDBB');
+  drawEllipse(ctx, ox+38, oy+26, 4, 3, '#FFDDBB');
+  drawEllipse(ctx, ox+34, oy+28, 4, 3, '#FFF');
+  ctx.fillStyle = '#FF8844';
+  for (let i = 0; i < 6; i++) { ctx.fillRect(ox+26-i/2, oy+16+i, 3+i, 1); ctx.fillRect(ox+38-i/2, oy+16+i, 3+i, 1); }
+  ctx.fillStyle = '#FFAA88';
+  for (let i = 0; i < 3; i++) { ctx.fillRect(ox+27, oy+18+i, 2+i, 1); ctx.fillRect(ox+39, oy+18+i, 2+i, 1); }
+  ctx.fillStyle = '#FFDD00'; ctx.fillRect(ox+29, oy+22, 3, 3); ctx.fillRect(ox+36, oy+22, 3, 3);
+  ctx.fillStyle = '#222'; ctx.fillRect(ox+30, oy+23, 2, 2); ctx.fillRect(ox+37, oy+23, 2, 2);
+  ctx.fillStyle = '#FFF'; setPixel(ctx, ox+30, oy+22, '#FFF'); setPixel(ctx, ox+37, oy+22, '#FFF');
+  ctx.fillStyle = '#222'; ctx.fillRect(ox+33, oy+27, 2, 2);
+  ctx.fillStyle = 'rgba(200,200,220,0.2)';
+  for (let i = 0; i < 8; i++) drawEllipse(ctx, ox+10+(i*7+frame*3)%44, oy+50+(i*3)%10, 4+(i%3), 2, 'rgba(200,200,220,0.2)');
+}
+
+function drawBossHanamori(ctx, ox, oy, frame) {
+  const vc = '#2A6A2A';
+  ctx.fillStyle = vc;
+  for (let i = 0; i < 120; i++) {
+    const vx = ox+10+Math.sin(i*0.08+frame*0.5)*12;
+    ctx.fillRect(vx, oy+5+i, 3, 1);
+    if (i%12===0) { ctx.fillStyle='#3A5A2A'; ctx.fillRect(vx-2,oy+5+i,2,2); ctx.fillRect(vx+3,oy+5+i,2,2); ctx.fillStyle=vc; }
+  }
+  for (let i = 0; i < 110; i++) { ctx.fillRect(ox+105+Math.sin(i*0.07+frame*0.3+2)*10, oy+15+i, 3, 1); }
+  ctx.fillStyle = '#4A2A1A'; ctx.fillRect(ox+54, oy+60, 20, 60);
+  ctx.fillStyle = '#6A4A3A'; ctx.fillRect(ox+56, oy+60, 16, 58);
+  ctx.fillStyle = '#7A5A4A'; ctx.fillRect(ox+58, oy+62, 4, 50);
+  ctx.fillStyle = '#4A2A1A'; ctx.fillRect(ox+44, oy+115, 40, 8); ctx.fillRect(ox+38, oy+118, 52, 6);
+  ctx.fillStyle = '#3A1A0A'; ctx.fillRect(ox+40, oy+122, 48, 4);
+  const pColors = ['#FFB7C5','#FFC0CB','#FF99B4','#FFAABB','#FF88AA'];
+  const ccx = ox+64, ccy = oy+36, rx = 40, ry = 28;
+  for (let dy = -ry; dy <= ry; dy++) {
+    for (let dx = -rx; dx <= rx; dx++) {
+      const dist = (dx*dx)/(rx*rx)+(dy*dy)/(ry*ry);
+      if (dist <= 1) {
+        const ci = ((Math.abs(dx)+Math.abs(dy))%5);
+        const a = Math.atan2(dy,dx), pp = Math.sin(a*5+frame*0.3)*0.5+0.5;
+        ctx.fillStyle = (pp > 0.3 || dist < 0.6) ? pColors[ci] : '#DD7799';
+        if (Math.random()>0.05) ctx.fillRect(ccx+dx, ccy+dy, 1, 1);
+      }
+    }
+  }
+  ctx.fillStyle = '#CC6688';
+  for (let dy = -ry; dy <= ry; dy++) for (let dx = -rx; dx <= rx; dx++) {
+    const d = (dx*dx)/(rx*rx)+(dy*dy)/(ry*ry);
+    if (d > 0.88 && d <= 1) ctx.fillRect(ccx+dx, ccy+dy, 1, 1);
+  }
+  drawCircle(ctx, ccx, ccy+2, 12, '#CCAA00');
+  drawCircle(ctx, ccx, ccy+2, 10, '#FFD700');
+  drawCircle(ctx, ccx, ccy+2, 8, '#FFEC8B');
+  ctx.fillStyle = '#880000'; ctx.fillRect(ccx-8,ccy-1,6,5); ctx.fillRect(ccx+3,ccy-1,6,5);
+  ctx.fillStyle = '#FF0000'; ctx.fillRect(ccx-7,ccy,4,3); ctx.fillRect(ccx+4,ccy,4,3);
+  ctx.fillStyle = '#FF4444'; ctx.fillRect(ccx-6,ccy+1,2,2); ctx.fillRect(ccx+5,ccy+1,2,2);
+  drawCircle(ctx, ccx-5, ccy+1, 5, 'rgba(255,0,0,0.3)');
+  drawCircle(ctx, ccx+6, ccy+1, 5, 'rgba(255,0,0,0.3)');
+  const pts = frame===0?[[ox+15,oy+20],[ox+100,oy+15],[ox+45,oy+10],[ox+90,oy+50],[ox+20,oy+70],[ox+110,oy+40]]:[[ox+20,oy+25],[ox+95,oy+20],[ox+50,oy+8],[ox+85,oy+55],[ox+25,oy+65],[ox+105,oy+45]];
+  for (const [px,py] of pts) { ctx.fillStyle='#FFB7C5'; ctx.fillRect(px,py,3,2); ctx.fillRect(px+1,py-1,1,1); ctx.fillRect(px+1,py+2,1,1); }
+  ctx.fillStyle = '#FF99AA';
+  for (let i = 0; i < 20; i++) { ctx.fillRect(ox+24+i*0.5-Math.sin(i*0.3+frame)*3, oy+50+i*1.5, 4, 2); }
+  for (let i = 0; i < 20; i++) { ctx.fillRect(ox+96-i*0.5+Math.sin(i*0.3+frame)*3, oy+50+i*1.5, 4, 2); }
+  drawCircle(ctx, ox+18, oy+82, 5, '#FFB7C5'); drawCircle(ctx, ox+18, oy+82, 3, '#FFD5DD');
+  drawCircle(ctx, ox+108, oy+82, 5, '#FFB7C5'); drawCircle(ctx, ox+108, oy+82, 3, '#FFD5DD');
+}
+
+// ==========================================
+// タイル描画
+// ==========================================
+function drawFloor(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy, 32, 32, '#C9A8A0', 12);
+  ctx.fillStyle = '#A08878';
+  ctx.fillRect(ox, oy+8, 32, 1); ctx.fillRect(ox, oy+16, 32, 1); ctx.fillRect(ox, oy+24, 32, 1);
+  ctx.fillRect(ox+16, oy, 1, 9); ctx.fillRect(ox+8, oy+8, 1, 9); ctx.fillRect(ox+24, oy+8, 1, 9);
+  ctx.fillRect(ox+16, oy+16, 1, 9); ctx.fillRect(ox+8, oy+24, 1, 9); ctx.fillRect(ox+24, oy+24, 1, 9);
+  ctx.fillStyle = 'rgba(255,200,200,0.3)';
+  ctx.fillRect(ox+1, oy+1, 3, 1); ctx.fillRect(ox+17, oy+9, 3, 1);
+}
+
+function drawWall(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy, 32, 32, '#7A7A6E', 15);
+  ctx.fillStyle = '#5A5A4E';
+  ctx.fillRect(ox, oy+10, 32, 1); ctx.fillRect(ox, oy+21, 32, 1);
+  ctx.fillRect(ox+10, oy, 1, 11); ctx.fillRect(ox+22, oy, 1, 11);
+  ctx.fillRect(ox+6, oy+10, 1, 12); ctx.fillRect(ox+18, oy+10, 1, 12); ctx.fillRect(ox+14, oy+21, 1, 11);
+  const mc = ['#4A7A3A','#5A8A4A','#3A6A2A'];
+  for (let i = 0; i < 20; i++) { ctx.fillStyle = mc[(Math.random()*3)|0]; ctx.fillRect(ox+(Math.random()*30)|0, oy+(Math.random()*30)|0+1, 2, 1); }
+  ctx.fillStyle = '#9A9A8E'; ctx.fillRect(ox, oy, 32, 1);
+  ctx.fillStyle = '#4A4A3E'; ctx.fillRect(ox, oy+31, 32, 1);
+}
+
+function drawWater(ctx, ox, oy, fi) {
+  const bc = ['#4488BB','#3377AA','#5599CC'];
+  noiseRect(ctx, ox, oy, 32, 32, bc[fi], 10);
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  const o = fi*4;
+  for (let i = 0; i < 5; i++) ctx.fillRect(ox+((i*7+o)%30), oy+((i*5+o*2)%28)+2, 3, 1);
+  ctx.fillStyle = 'rgba(0,0,80,0.2)';
+  ctx.fillRect(ox+4, oy+12+fi, 8, 6); ctx.fillRect(ox+18, oy+4+fi, 10, 4);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillRect(ox+6+fi*3, oy+8, 2, 1); ctx.fillRect(ox+20-fi*2, oy+18, 1, 1);
+}
+
+function drawDoor(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy, 32, 32, '#8A7A6A', 8);
+  noiseRect(ctx, ox+4, oy+2, 24, 28, '#8B5E3C', 10);
+  ctx.fillStyle = '#7A4E2C'; ctx.fillRect(ox+15, oy+2, 2, 28);
+  ctx.fillStyle = '#6A3E1C'; ctx.fillRect(ox+4, oy+10, 24, 2); ctx.fillRect(ox+4, oy+20, 24, 2);
+  ctx.fillStyle = '#DAA520'; ctx.fillRect(ox+21, oy+14, 3, 4);
+  ctx.fillStyle = '#B8860B'; ctx.fillRect(ox+22, oy+15, 1, 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(ox+4, oy+28, 24, 2);
+  ctx.fillStyle = '#AA9A8A'; ctx.fillRect(ox+3, oy+1, 1, 30);
+}
+
+function drawChestClosed(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy, 32, 32, '#8A7A6A', 6);
+  const bx = ox+4, by = oy+10;
+  ctx.fillStyle = '#6B3310'; ctx.fillRect(bx, by, 24, 18);
+  ctx.fillStyle = '#8B5330'; ctx.fillRect(bx+1, by+1, 22, 16);
+  ctx.fillStyle = '#7B4320'; ctx.fillRect(bx, by, 24, 8);
+  ctx.fillStyle = '#9B6340'; ctx.fillRect(bx+1, by+1, 22, 6);
+  ctx.fillStyle = '#AB7350'; ctx.fillRect(bx+2, by+1, 6, 2);
+  ctx.fillStyle = '#DAA520'; ctx.fillRect(bx+9, by+6, 6, 4);
+  ctx.fillStyle = '#B8860B'; ctx.fillRect(bx+10, by+7, 4, 2);
+  ctx.fillStyle = '#222'; ctx.fillRect(bx+11, by+8, 2, 1);
+  ctx.fillStyle = '#B8860B'; ctx.fillRect(bx, by+4, 24, 1); ctx.fillRect(bx, by+14, 24, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(bx, by+17, 24, 2);
+}
+
+function drawChestOpen(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy, 32, 32, '#8A7A6A', 6);
+  const bx = ox+4, by = oy+14;
+  ctx.fillStyle = '#6B3310'; ctx.fillRect(bx, by, 24, 14);
+  ctx.fillStyle = '#8B5330'; ctx.fillRect(bx+1, by+1, 22, 12);
+  ctx.fillStyle = '#B8860B'; ctx.fillRect(bx, by+6, 24, 1);
+  ctx.fillStyle = '#7B4320'; ctx.fillRect(bx+1, oy+4, 22, 10);
+  ctx.fillStyle = '#9B6340'; ctx.fillRect(bx+2, oy+5, 20, 8);
+  ctx.fillStyle = '#AB7350'; ctx.fillRect(bx+3, oy+5, 6, 2);
+  ctx.fillStyle = '#B8860B'; ctx.fillRect(bx+1, oy+12, 22, 1);
+  ctx.fillStyle = '#FFD700'; ctx.fillRect(bx+3, by+1, 18, 4);
+  ctx.fillStyle = '#FFEC8B'; ctx.fillRect(bx+5, by+2, 14, 2);
+  ctx.fillStyle = '#FFF'; ctx.fillRect(bx+8, by+1, 1, 1); ctx.fillRect(bx+14, by+2, 1, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.fillRect(bx, by+13, 24, 2);
+}
+
+function drawSavePoint(ctx, ox, oy, fi) {
+  noiseRect(ctx, ox, oy, 32, 32, '#9A8A7A', 6);
+  const pulse = fi===0?0.6:0.9, cx = ox+16, cy = oy+16;
+  for (let dy = -12; dy <= 12; dy++) for (let dx = -12; dx <= 12; dx++) {
+    const d = Math.sqrt(dx*dx+dy*dy);
+    if (d <= 12 && d >= 10) { ctx.fillStyle=`rgba(100,200,255,${pulse*0.7})`; ctx.fillRect(cx+dx,cy+dy,1,1); }
+    else if (d < 10 && d >= 6) { ctx.fillStyle=`rgba(150,220,255,${pulse*0.3*(1-(d-6)/4)})`; ctx.fillRect(cx+dx,cy+dy,1,1); }
+    else if (d < 6) { ctx.fillStyle=`rgba(200,240,255,${pulse*0.4})`; ctx.fillRect(cx+dx,cy+dy,1,1); }
+  }
+  ctx.fillStyle = `rgba(150,230,255,${pulse})`;
+  ctx.fillRect(cx-1,cy-11,2,22); ctx.fillRect(cx-11,cy-1,22,2);
+  for (let i = -8; i <= 8; i++) { ctx.fillRect(cx+i,cy+i,1,1); ctx.fillRect(cx+i,cy-i,1,1); }
+  ctx.fillStyle = `rgba(255,255,255,${pulse})`; ctx.fillRect(cx-1,cy-1,2,2);
+}
+
+function drawGrass(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy, 32, 32, '#6A9A4A', 12);
+  const gc = ['#5A8A3A','#7AAA5A','#4A7A2A','#8ABA6A'];
+  for (let i = 0; i < 15; i++) {
+    const gx = ox+(Math.random()*28|0)+2, gy = oy+(Math.random()*20|0)+10;
+    ctx.fillStyle = gc[Math.random()*4|0];
+    ctx.fillRect(gx, gy, 1, -(Math.random()*6|0+3)); ctx.fillRect(gx+1, gy, 1, -(Math.random()*4|0+2));
+  }
+  const fc = ['#FFB7C5','#FF69B4','#FFC0CB','#FFF'];
+  for (let i = 0; i < 4; i++) {
+    const fx = ox+(Math.random()*26|0)+3, fy = oy+(Math.random()*14|0)+6;
+    ctx.fillStyle = fc[Math.random()*4|0]; ctx.fillRect(fx,fy,2,2);
+    ctx.fillStyle = '#FFD700'; ctx.fillRect(fx,fy,1,1);
+  }
+}
+
+function drawSakuraTree(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy+24, 32, 8, '#6A9A4A', 10);
+  ctx.fillStyle = '#6B3A1F'; ctx.fillRect(ox+13, oy+14, 6, 16);
+  ctx.fillStyle = '#8B5A3F'; ctx.fillRect(ox+14, oy+14, 4, 16);
+  ctx.fillStyle = '#9B6A4F'; ctx.fillRect(ox+14, oy+16, 1, 10);
+  ctx.fillStyle = '#5B2A0F'; ctx.fillRect(ox+11, oy+28, 10, 3);
+  const cc = ['#FFB7C5','#FFC0CB','#FF99B4','#FFAABB'], ccx = ox+16, ccy = oy+8;
+  for (let dy = -8; dy <= 6; dy++) for (let dx = -13; dx <= 13; dx++) {
+    const d = (dx*dx)/(13*13)+(dy*dy)/(7*7);
+    if (d <= 1 && Math.random()>0.15) { ctx.fillStyle = cc[((dx+dy+30)%4)]; ctx.fillRect(ccx+dx,ccy+dy,1,1); }
+  }
+  ctx.fillStyle = '#DD8899';
+  for (let dy = -8; dy <= 6; dy++) for (let dx = -13; dx <= 13; dx++) {
+    const d = (dx*dx)/(13*13)+(dy*dy)/(7*7);
+    if (d > 0.85 && d <= 1) ctx.fillRect(ccx+dx,ccy+dy,1,1);
+  }
+  ctx.fillStyle = '#FFD5DD';
+  for (let dy = -6; dy <= -2; dy++) for (let dx = -10; dx <= -4; dx++) {
+    const d = (dx*dx)/(13*13)+(dy*dy)/(7*7);
+    if (d <= 0.5 && Math.random()>0.4) ctx.fillRect(ccx+dx,ccy+dy,1,1);
+  }
+}
+
+function drawFence(ctx, ox, oy) {
+  noiseRect(ctx, ox, oy+24, 32, 8, '#6A9A4A', 10);
+  ctx.fillStyle = '#9B7A5A'; ctx.fillRect(ox, oy+10, 32, 3); ctx.fillRect(ox, oy+20, 32, 3);
+  ctx.fillStyle = '#AB8A6A'; ctx.fillRect(ox, oy+10, 32, 1); ctx.fillRect(ox, oy+20, 32, 1);
+  for (let i = 0; i < 4; i++) {
+    const px = ox+2+i*8;
+    ctx.fillStyle = '#7B5A3A'; ctx.fillRect(px, oy+4, 4, 22);
+    ctx.fillStyle = '#8B6A4A'; ctx.fillRect(px+1, oy+4, 2, 22);
+    ctx.fillStyle = '#9B7A5A'; ctx.fillRect(px, oy+3, 4, 2); ctx.fillRect(px+1, oy+2, 2, 2);
+  }
+}
+
+// ==========================================
+// 生成 & プレビュー
+// ==========================================
+const generatedCanvases = {};
+
+const FRAME_W = 32, FRAME_H = 48, COLS = 3, ROWS = 4;
+const DIRECTIONS = ['down','left','right','up'];
+
+function genCharSheet(drawFunc, id, label) {
+  const c = document.createElement('canvas');
+  c.width = FRAME_W * COLS; c.height = FRAME_H * ROWS;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, c.width, c.height);
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      drawFunc(ctx, col * FRAME_W, row * FRAME_H, DIRECTIONS[row], col);
+    }
+  }
+  generatedCanvases[id] = c;
+  // プレビュー
+  const container = document.getElementById('char-preview');
+  const div = document.createElement('div'); div.className = 'preview-item';
+  const lbl = document.createElement('label'); lbl.textContent = label;
+  div.appendChild(lbl);
+  // 拡大プレビュー
+  const preview = document.createElement('canvas');
+  preview.width = c.width * 3; preview.height = c.height * 3;
+  preview.style.width = c.width * 3 + 'px'; preview.style.height = c.height * 3 + 'px';
+  const pctx = preview.getContext('2d');
+  pctx.imageSmoothingEnabled = false;
+  pctx.drawImage(c, 0, 0, preview.width, preview.height);
+  div.appendChild(preview);
+  container.appendChild(div);
+  log(`${label} (${c.width}x${c.height}) 生成完了`);
+}
+
+function genEnemySheet(drawFunc, w, h, frames, id, label) {
+  const c = document.createElement('canvas');
+  c.width = w * frames; c.height = h;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, c.width, c.height);
+  for (let f = 0; f < frames; f++) drawFunc(ctx, f * w, 0, f);
+  generatedCanvases[id] = c;
+  const isB = w >= 128;
+  const containerId = isB ? 'boss-preview' : 'enemy-preview';
+  const container = document.getElementById(containerId);
+  const div = document.createElement('div'); div.className = 'preview-item';
+  const lbl = document.createElement('label'); lbl.textContent = label;
+  div.appendChild(lbl);
+  const scale = isB ? 2 : 3;
+  const preview = document.createElement('canvas');
+  preview.width = c.width * scale; preview.height = c.height * scale;
+  preview.style.width = c.width * scale + 'px'; preview.style.height = c.height * scale + 'px';
+  const pctx = preview.getContext('2d');
+  pctx.imageSmoothingEnabled = false;
+  pctx.drawImage(c, 0, 0, preview.width, preview.height);
+  div.appendChild(preview);
+  container.appendChild(div);
+  log(`${label} (${c.width}x${c.height}) 生成完了`);
+}
+
+function genTileSheet() {
+  const TOTAL = 13, T = 32;
+  const c = document.createElement('canvas');
+  c.width = T * TOTAL; c.height = T;
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.clearRect(0, 0, c.width, c.height);
+  let i = 0;
+  drawFloor(ctx, i*T, 0); i++;
+  drawWall(ctx, i*T, 0); i++;
+  drawWater(ctx, i*T, 0, 0); i++;
+  drawWater(ctx, i*T, 0, 1); i++;
+  drawWater(ctx, i*T, 0, 2); i++;
+  drawDoor(ctx, i*T, 0); i++;
+  drawChestClosed(ctx, i*T, 0); i++;
+  drawChestOpen(ctx, i*T, 0); i++;
+  drawSavePoint(ctx, i*T, 0, 0); i++;
+  drawSavePoint(ctx, i*T, 0, 1); i++;
+  drawGrass(ctx, i*T, 0); i++;
+  drawSakuraTree(ctx, i*T, 0); i++;
+  drawFence(ctx, i*T, 0); i++;
+  generatedCanvases['spring_tiles'] = c;
+  const container = document.getElementById('tile-preview');
+  const div = document.createElement('div'); div.className = 'preview-item';
+  const lbl = document.createElement('label'); lbl.textContent = 'spring_tiles.png (' + c.width + 'x' + c.height + ')';
+  div.appendChild(lbl);
+  const preview = document.createElement('canvas');
+  preview.width = c.width * 3; preview.height = c.height * 3;
+  preview.style.width = c.width * 3 + 'px'; preview.style.height = c.height * 3 + 'px';
+  const pctx = preview.getContext('2d');
+  pctx.imageSmoothingEnabled = false;
+  pctx.drawImage(c, 0, 0, preview.width, preview.height);
+  div.appendChild(preview);
+  // タイルインデックスラベル
+  const info = document.createElement('div');
+  info.className = 'info';
+  info.innerHTML = '0:床 1:壁 2-4:水 5:扉 6:宝箱(閉) 7:宝箱(開) 8-9:セーブ 10:草 11:桜 12:柵';
+  div.appendChild(info);
+  container.appendChild(div);
+  log('タイルセット (' + c.width + 'x' + c.height + ') 生成完了');
+}
+
+// ==========================================
+// 生成トリガー
+// ==========================================
+function clearPreview(id) { document.getElementById(id).innerHTML = ''; }
+
+function generateSprites() {
+  clearPreview('char-preview');
+  log('--- キャラクタースプライト生成開始 ---');
+  genCharSheet(drawHero, 'hero', '主人公 (hero.png)');
+  genCharSheet(drawTsumugi, 'tsumugi', '紬 (tsumugi.png)');
+  genCharSheet(drawNpcGuild, 'npc_guild', '薬師ギルド長 (npc_guild.png)');
+  genCharSheet(drawNpcInn, 'npc_inn', '宿屋の主人 (npc_inn.png)');
+  genCharSheet(drawNpcMerchant, 'npc_merchant', '商人 (npc_merchant.png)');
+  log('--- キャラクタースプライト生成完了 ---');
+}
+
+function generateEnemies() {
+  clearPreview('enemy-preview');
+  clearPreview('boss-preview');
+  log('--- 敵スプライト生成開始 ---');
+  genEnemySheet(drawFairy, 64, 64, 2, 'enemy_fairy', '花精 (enemy_fairy.png)');
+  genEnemySheet(drawBee, 64, 64, 2, 'enemy_bee', '花蜂 (enemy_bee.png)');
+  genEnemySheet(drawFox, 64, 64, 2, 'enemy_fox', '霧狐 (enemy_fox.png)');
+  genEnemySheet(drawBossHanamori, 128, 128, 2, 'boss_hanamori', '花守 (boss_hanamori.png)');
+  log('--- 敵スプライト生成完了 ---');
+}
+
+function generateTiles() {
+  clearPreview('tile-preview');
+  log('--- タイルセット生成開始 ---');
+  genTileSheet();
+  log('--- タイルセット生成完了 ---');
+}
+
+function generateAll() {
+  document.getElementById('status').innerHTML = '';
+  log('=== 全アセット生成開始 ===');
+  generateSprites();
+  generateEnemies();
+  generateTiles();
+  log('=== 全アセット生成完了 ===', 'ok');
+}
+
+// ==========================================
+// ダウンロード
+// ==========================================
+function downloadCanvas(canvas, filename) {
+  const a = document.createElement('a');
+  a.download = filename;
+  a.href = canvas.toDataURL('image/png');
+  a.click();
+}
+
+function downloadAll() {
+  const entries = Object.entries(generatedCanvases);
+  if (entries.length === 0) {
+    log('まず「全アセット生成」を実行してください', 'warn');
+    return;
+  }
+  log('--- ダウンロード開始 ---');
+  // 少しずつダウンロード (ブラウザが複数ダウンロードをブロックしないように)
+  const spriteFiles = {
+    'hero': 'hero.png',
+    'tsumugi': 'tsumugi.png',
+    'npc_guild': 'npc_guild.png',
+    'npc_inn': 'npc_inn.png',
+    'npc_merchant': 'npc_merchant.png',
+    'enemy_fairy': 'enemy_fairy.png',
+    'enemy_bee': 'enemy_bee.png',
+    'enemy_fox': 'enemy_fox.png',
+    'boss_hanamori': 'boss_hanamori.png',
+    'spring_tiles': 'spring_tiles.png',
+  };
+  let i = 0;
+  for (const [id, filename] of Object.entries(spriteFiles)) {
+    if (generatedCanvases[id]) {
+      setTimeout(() => {
+        downloadCanvas(generatedCanvases[id], filename);
+        log(`  ダウンロード: ${filename}`);
+      }, i * 300);
+      i++;
+    }
+  }
+  setTimeout(() => log('--- 全ダウンロード完了。ファイルを assets/sprites/ と assets/tiles/ に配置してください ---'), i * 300 + 100);
+}
+
+// 起動時に自動生成
+window.addEventListener('load', () => {
+  generateAll();
+});
+</script>
+</body>
+</html>

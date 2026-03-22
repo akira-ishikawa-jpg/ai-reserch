@@ -67,6 +67,12 @@ class ExplorationScene extends Scene {
     this.loadMap(mapId, targetX, targetY);
     this.transitioning = false;
     this.game.renderer.startFade(0, 0.03);
+
+    // BGM: マップに応じて切り替え
+    if (this.game.audio && this.game.audio.ctx) {
+      const bgmId = mapId.startsWith('sennen') ? 'dungeon_spring' : 'town_spring';
+      this.game.audio.playBgm(bgmId);
+    }
   }
 
   exit() {
@@ -80,6 +86,12 @@ class ExplorationScene extends Scene {
   resume(data) {
     // バトル/会話から戻ってきた
     this.game.renderer.startFade(0, 0.03);
+
+    // BGMを探索曲に戻す
+    if (this.game.audio && this.game.audio.ctx && this.currentMap) {
+      const bgmId = this.currentMap.id.startsWith('sennen') ? 'dungeon_spring' : 'town_spring';
+      this.game.audio.playBgm(bgmId);
+    }
 
     if (data && data.result === 'victory') {
       // 倒した敵シンボルを処理
