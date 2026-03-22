@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>四季廻りの職人</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+    <div id="ui-overlay"></div>
+  </div>
+
+  <!-- Engine -->
+  <script src="js/engine/constants.js"></script>
+  <script src="js/engine/input.js"></script>
+  <script src="js/engine/renderer.js"></script>
+  <script src="js/engine/scene.js"></script>
+  <script src="js/engine/game.js"></script>
+
+  <!-- Data -->
+  <script src="js/data/jobs.js"></script>
+  <script src="js/data/skills.js"></script>
+  <script src="js/data/enemies.js"></script>
+  <script src="js/data/maps.js"></script>
+  <script src="js/data/story.js"></script>
+
+  <!-- Systems -->
+  <script src="js/systems/party.js"></script>
+  <script src="js/systems/battle.js"></script>
+  <script src="js/systems/dialogue.js"></script>
+
+  <!-- Scenes -->
+  <script src="js/scenes/title.js"></script>
+  <script src="js/scenes/exploration.js"></script>
+  <script src="js/scenes/battle_scene.js"></script>
+  <script src="js/scenes/dialogue_scene.js"></script>
+
+  <!-- Main -->
+  <script src="js/main.js"></script>
+</body>
+</html>
