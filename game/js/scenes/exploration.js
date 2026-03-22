@@ -986,6 +986,42 @@ class ExplorationScene extends Scene {
             ctx.fillRect(sx + 4, sy - 40, TILE_SIZE - 8, TILE_SIZE + 40);
           }
 
+          // --- 草花デコレーション（床タイルの上に20%の確率で描画） ---
+          if (tile === TILE.FLOOR || tile === TILE.EMPTY) {
+            const grassChance = seededRandom(tx, ty, 999);
+            if (grassChance < 0.2) {
+              const grassCount = 2 + Math.floor(seededRandom(tx, ty, 1001) * 2); // 2-3本
+              for (let gi = 0; gi < grassCount; gi++) {
+                const gBaseX = sx + 6 + seededRandom(tx, ty, 1010 + gi) * (TILE_SIZE - 12);
+                const gBaseY = sy + TILE_SIZE - 2;
+                const gHeight = 5 + seededRandom(tx, ty, 1020 + gi) * 5; // 5-10px
+                // 風によるsin波揺れ
+                const windSway = Math.sin(now * 0.002 + tx * 0.8 + gi * 1.5) * 1.5;
+
+                ctx.strokeStyle = `rgba(80,${140 + Math.floor(seededRandom(tx, ty, 1030 + gi) * 40)},60,0.7)`;
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(gBaseX, gBaseY);
+                ctx.quadraticCurveTo(gBaseX + windSway * 0.5, gBaseY - gHeight * 0.5, gBaseX + windSway, gBaseY - gHeight);
+                ctx.stroke();
+
+                // 先端に薄い白（光の透過表現）
+                ctx.fillStyle = 'rgba(255,255,240,0.35)';
+                ctx.fillRect(Math.floor(gBaseX + windSway), Math.floor(gBaseY - gHeight), 1, 2);
+
+                // 春のエリアではピンクの花弁を混ぜる
+                if (map.season === SEASON.SPRING && seededRandom(tx, ty, 1050 + gi) < 0.4) {
+                  const petalX = gBaseX + windSway;
+                  const petalY = gBaseY - gHeight - 1;
+                  ctx.fillStyle = `rgba(255,${150 + Math.floor(seededRandom(tx, ty, 1060 + gi) * 50)},${180 + Math.floor(seededRandom(tx, ty, 1070 + gi) * 40)},0.7)`;
+                  ctx.beginPath();
+                  ctx.arc(petalX, petalY, 1.5, 0, Math.PI * 2);
+                  ctx.fill();
+                }
+              }
+            }
+          }
+
         } else if (tile === TILE.WALL) {
           // --- Wall tile: 3D化 with unified lighting ---
           const wallBase = colors[tile] || '#888';
@@ -1066,52 +1102,51 @@ class ExplorationScene extends Scene {
           }
 
         } else if (tile === TILE.WATER) {
-          // --- Water tile ---
-          const waterBase = colors[tile] || '#4488CC';
-          ctx.fillStyle = waterBase;
+          // --- Water tile: 3層構造（深度層 + 波紋層 + スペキュラ層） ---
+
+          // 1. 深度グラデーション（上が明るい浅瀬、下が暗い深部）
+          const depthGrad = ctx.createLinearGradient(sx, sy, sx, sy + TILE_SIZE);
+          depthGrad.addColorStop(0, '#5B8DAF');  // 浅い水色
+          depthGrad.addColorStop(1, '#3A6B8C');  // 深い水色
+          ctx.fillStyle = depthGrad;
           ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
 
-          // Multiple layered wave lines
-          for (let wy = 0; wy < TILE_SIZE; wy += 5) {
-            const waveOffset = Math.sin(now / 600 + tx * 0.7 + ty * 0.5 + wy * 0.2) * 2.5;
-            const waveAlpha = 0.07 + 0.06 * Math.sin(now / 800 + wy * 0.3);
-            ctx.fillStyle = `rgba(255,255,255,${waveAlpha})`;
-            ctx.fillRect(Math.floor(sx + waveOffset), sy + wy, TILE_SIZE, 2);
+          // 2. 波紋層（3本のsin波を重ねて水面の横方向の微細な変位を表現）
+          const waveParams = [
+            { speed: 0.002, amplitude: 1.5, phase: 0, yOffset: 8, alpha: 0.12 },
+            { speed: 0.0015, amplitude: 1.0, phase: 2.1, yOffset: 16, alpha: 0.09 },
+            { speed: 0.003, amplitude: 0.8, phase: 4.2, yOffset: 24, alpha: 0.06 },
+          ];
+          for (let wi = 0; wi < 3; wi++) {
+            const wp = waveParams[wi];
+            ctx.strokeStyle = `rgba(255,255,255,${wp.alpha})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            for (let px = 0; px < TILE_SIZE; px++) {
+              const wy = sy + wp.yOffset + Math.sin(now * wp.speed + (sx + px) * 0.15 + wp.phase) * wp.amplitude;
+              if (px === 0) ctx.moveTo(sx + px, wy);
+              else ctx.lineTo(sx + px, wy);
+            }
+            ctx.stroke();
           }
 
-          // Secondary wave layer (slower, shifted)
-          for (let wy = 2; wy < TILE_SIZE; wy += 8) {
-            const waveOffset2 = Math.sin(now / 900 + tx * 0.5 + ty * 0.8 + wy * 0.15) * 3;
-            ctx.fillStyle = 'rgba(200,230,255,0.06)';
-            ctx.fillRect(Math.floor(sx + waveOffset2 + 3), sy + wy, TILE_SIZE * 0.6, 2);
-          }
-
-          // Moving specular highlights (multiple small ones)
-          const specX1 = sx + TILE_SIZE * (0.3 + 0.15 * Math.sin(now / 1200 + tx * 0.6));
-          const specY1 = sy + TILE_SIZE * (0.25 + 0.1 * Math.sin(now / 1500 + ty * 0.4));
-          const specA1 = 0.18 + 0.12 * Math.sin(now / 1000 + tx * 0.4);
-          ctx.fillStyle = `rgba(255,255,255,${specA1})`;
+          // 3. スペキュラ層（光源方向315°左上からの反射 — 白い楕円が時間で移動）
+          const specX = sx + 8 + Math.sin(now * 0.001 + sy * 0.1) * 10;
+          const specY = sy + 6 + Math.cos(now * 0.0008 + sx * 0.1) * 4;
+          const specAlpha = 0.15 + Math.sin(now * 0.003 + sx) * 0.08;
+          ctx.fillStyle = `rgba(255,255,255,${Math.max(0, specAlpha)})`;
           ctx.beginPath();
-          ctx.ellipse(specX1, specY1, TILE_SIZE * 0.2, TILE_SIZE * 0.1, 0, 0, Math.PI * 2);
+          ctx.ellipse(specX, specY, 3, 1.5, -0.4, 0, Math.PI * 2);
           ctx.fill();
 
-          const specX2 = sx + TILE_SIZE * (0.7 + 0.1 * Math.sin(now / 1400 + tx * 0.3 + 2));
-          const specY2 = sy + TILE_SIZE * (0.65 + 0.08 * Math.sin(now / 1100 + ty * 0.5 + 1));
-          const specA2 = 0.1 + 0.08 * Math.sin(now / 900 + tx * 0.7 + 3);
-          ctx.fillStyle = `rgba(255,255,255,${specA2})`;
+          // 追加スペキュラ（タイル内の別の位置にもう1つ）
+          const specX2 = sx + TILE_SIZE - 10 + Math.sin(now * 0.0012 + sy * 0.15 + 3) * 6;
+          const specY2 = sy + TILE_SIZE - 10 + Math.cos(now * 0.0009 + sx * 0.12 + 2) * 3;
+          const specAlpha2 = 0.10 + Math.sin(now * 0.002 + sx * 0.5 + 1) * 0.06;
+          ctx.fillStyle = `rgba(255,255,255,${Math.max(0, specAlpha2)})`;
           ctx.beginPath();
-          ctx.ellipse(specX2, specY2, TILE_SIZE * 0.12, TILE_SIZE * 0.06, 0.3, 0, Math.PI * 2);
+          ctx.ellipse(specX2, specY2, 2, 1, -0.3, 0, Math.PI * 2);
           ctx.fill();
-
-          // Ripple circle
-          const ripplePhase = (now / 2000 + tx * 0.3 + ty * 0.7) % 1;
-          const rippleR = ripplePhase * TILE_SIZE * 0.4;
-          const rippleA = (1 - ripplePhase) * 0.12;
-          ctx.strokeStyle = `rgba(255,255,255,${rippleA})`;
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.arc(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, rippleR, 0, Math.PI * 2);
-          ctx.stroke();
 
         } else {
           // Default tile
@@ -1280,75 +1315,131 @@ class ExplorationScene extends Scene {
       if (cx < -TILE_SIZE || cx > GAME_WIDTH || cy < -TILE_SIZE || cy > GAME_HEIGHT) continue;
 
       const opened = this.openedChests[chest.id];
+      // 箱体の共通寸法
+      const boxL = cx + 5;
+      const boxR = cx + TILE_SIZE - 5;
+      const boxW = boxR - boxL;
 
       if (opened) {
-        // --- Opened chest: dark, no glow ---
-        // Shadow
+        // ======= 開封済み宝箱：暗い色、蓋が開いた状態、グローなし =======
+
+        // 足元の影
         ctx.fillStyle = 'rgba(0,0,0,0.12)';
         ctx.beginPath();
         ctx.ellipse(cx + TILE_SIZE / 2, cy + TILE_SIZE - 2, TILE_SIZE * 0.3, 2, 0, 0, Math.PI * 2);
         ctx.fill();
-        // Body (darkened)
-        ctx.fillStyle = '#6B5B45';
-        ctx.fillRect(cx + 4, cy + 14, TILE_SIZE - 8, TILE_SIZE - 18);
-        // Body top edge
-        ctx.fillStyle = 'rgba(255,255,255,0.06)';
-        ctx.fillRect(cx + 4, cy + 14, TILE_SIZE - 8, 1);
-        // Open lid (tilted back)
-        ctx.fillStyle = '#5A4A34';
-        ctx.fillRect(cx + 3, cy + 4, TILE_SIZE - 6, 6);
-        ctx.fillStyle = '#504030';
-        ctx.fillRect(cx + 5, cy + 2, TILE_SIZE - 10, 4);
-        // Dark interior
-        ctx.fillStyle = '#221108';
-        ctx.fillRect(cx + 6, cy + 14, TILE_SIZE - 12, 5);
-        // Lid hinge dots
-        ctx.fillStyle = '#8B7355';
-        ctx.fillRect(cx + 5, cy + 10, 2, 2);
-        ctx.fillRect(cx + TILE_SIZE - 7, cy + 10, 2, 2);
-      } else {
-        // --- Closed chest: golden glow ---
-        // Outer golden aura
-        const glowPulse = 0.25 + 0.15 * Math.sin(now / 600);
-        renderer.drawGlow(cx + TILE_SIZE / 2, cy + TILE_SIZE / 2 + 2, TILE_SIZE * 0.6, '#FFD700', glowPulse);
 
-        // Shadow
+        // 箱体（暗い茶色グラデーション）
+        const bodyGradO = ctx.createLinearGradient(boxL, cy + 16, boxL, cy + TILE_SIZE - 3);
+        bodyGradO.addColorStop(0, '#5A4A34');
+        bodyGradO.addColorStop(1, '#3E3020');
+        ctx.fillStyle = bodyGradO;
+        ctx.fillRect(boxL, cy + 16, boxW, TILE_SIZE - 19);
+
+        // 横方向の板分割線3本
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+        for (let li = 0; li < 3; li++) {
+          ctx.fillRect(boxL + 1, cy + 19 + li * 3, boxW - 2, 1);
+        }
+
+        // 開いた蓋（上部に三角形で表現）
+        ctx.fillStyle = '#504030';
+        ctx.beginPath();
+        ctx.moveTo(boxL - 1, cy + 16);
+        ctx.lineTo(cx + TILE_SIZE / 2, cy + 4);
+        ctx.lineTo(boxR + 1, cy + 16);
+        ctx.closePath();
+        ctx.fill();
+        // 蓋の左端ハイライト（光源左上）
+        ctx.strokeStyle = 'rgba(255,250,240,0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(boxL - 1, cy + 16);
+        ctx.lineTo(cx + TILE_SIZE / 2, cy + 4);
+        ctx.stroke();
+
+        // 暗い内部
+        ctx.fillStyle = '#1A0A04';
+        ctx.fillRect(boxL + 2, cy + 16, boxW - 4, 4);
+
+      } else {
+        // ======= 未開封宝箱：木箱 + 金属帯 + 鍵穴 + ゴールドグロー =======
+
+        // 外側ゴールドグロー
+        const glowPulse = 0.25 + 0.15 * Math.sin(now / 600);
+        renderer.drawGlow(cx + TILE_SIZE / 2, cy + TILE_SIZE / 2 + 2, TILE_SIZE * 0.7, '#FFD700', glowPulse);
+
+        // 足元の影
         ctx.fillStyle = 'rgba(0,0,0,0.18)';
         ctx.beginPath();
         ctx.ellipse(cx + TILE_SIZE / 2, cy + TILE_SIZE - 2, TILE_SIZE * 0.35, 3, 0, 0, Math.PI * 2);
         ctx.fill();
-        // Body
-        ctx.fillStyle = '#B8860B';
-        ctx.fillRect(cx + 4, cy + 12, TILE_SIZE - 8, TILE_SIZE - 16);
-        // Body gradient highlight
-        ctx.fillStyle = 'rgba(255,255,255,0.18)';
-        ctx.fillRect(cx + 4, cy + 12, TILE_SIZE - 8, 3);
-        // Body bottom edge shadow
-        ctx.fillStyle = 'rgba(0,0,0,0.15)';
-        ctx.fillRect(cx + 4, cy + TILE_SIZE - 5, TILE_SIZE - 8, 1);
-        // Lid
-        ctx.fillStyle = '#DAA520';
-        ctx.fillRect(cx + 2, cy + 6, TILE_SIZE - 4, 8);
-        // Lid top highlight (stronger)
-        ctx.fillStyle = 'rgba(255,255,255,0.25)';
-        ctx.fillRect(cx + 2, cy + 6, TILE_SIZE - 4, 2);
-        // Lid side shadow
-        ctx.fillStyle = 'rgba(0,0,0,0.1)';
-        ctx.fillRect(cx + 2, cy + 12, TILE_SIZE - 4, 1);
-        // Metal clasp
-        ctx.fillStyle = '#FFD700';
-        ctx.fillRect(cx + 12, cy + 12, 8, 4);
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
-        ctx.fillRect(cx + 13, cy + 12, 6, 1);
 
-        // Keyhole with pulsing glow
-        const shine = 0.5 + 0.4 * Math.sin(now / 500);
-        renderer.drawGlow(cx + TILE_SIZE / 2, cy + 17, 8, '#FFD700', shine);
-        // Keyhole bright core
-        ctx.fillStyle = `rgba(255,255,220,${shine * 0.9})`;
-        ctx.fillRect(cx + 14, cy + 13, 4, 2);
-        ctx.fillStyle = `rgba(255,255,255,${shine * 0.6})`;
-        ctx.fillRect(cx + 15, cy + 12, 2, 1);
+        // 箱体（暗い茶色のグラデーション）
+        const bodyGrad = ctx.createLinearGradient(boxL, cy + 12, boxL, cy + TILE_SIZE - 3);
+        bodyGrad.addColorStop(0, '#8B6914');
+        bodyGrad.addColorStop(1, '#5C4010');
+        ctx.fillStyle = bodyGrad;
+        ctx.fillRect(boxL, cy + 12, boxW, TILE_SIZE - 15);
+
+        // 横方向の板分割線3本
+        ctx.fillStyle = 'rgba(0,0,0,0.10)';
+        for (let li = 0; li < 3; li++) {
+          ctx.fillRect(boxL + 1, cy + 15 + li * 4, boxW - 2, 1);
+        }
+
+        // 左上ハイライト（GLOBAL_LIGHT方向）
+        ctx.fillStyle = GLOBAL_LIGHT.highlightColor;
+        ctx.fillRect(boxL, cy + 12, boxW, 1);  // top edge
+        ctx.fillRect(boxL, cy + 12, 1, TILE_SIZE - 15); // left edge
+
+        // 右・下の影
+        ctx.fillStyle = 'rgba(20,10,30,0.15)';
+        ctx.fillRect(boxR - 1, cy + 12, 1, TILE_SIZE - 15); // right edge
+        ctx.fillRect(boxL, cy + TILE_SIZE - 4, boxW, 1);    // bottom edge
+
+        // 金属帯（黄土色の2pxライン × 2本）
+        const bandColor = '#B8960B';
+        ctx.fillStyle = bandColor;
+        ctx.fillRect(boxL, cy + 15, boxW, 2); // 上の帯
+        ctx.fillRect(boxL, cy + 23, boxW, 2); // 下の帯
+        // 帯上の鋭いスペキュラ白点
+        const bandShine = 0.5 + 0.3 * Math.sin(now / 400);
+        ctx.fillStyle = `rgba(255,255,255,${bandShine * 0.6})`;
+        ctx.fillRect(boxL + 3, cy + 15, 2, 1);
+        ctx.fillRect(boxL + 3, cy + 23, 2, 1);
+
+        // 蓋部分（上部）
+        ctx.fillStyle = '#A07818';
+        ctx.fillRect(boxL - 1, cy + 7, boxW + 2, 6);
+        // 蓋ハイライト
+        ctx.fillStyle = 'rgba(255,250,240,0.25)';
+        ctx.fillRect(boxL - 1, cy + 7, boxW + 2, 1);
+        // 蓋下影
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+        ctx.fillRect(boxL - 1, cy + 12, boxW + 2, 1);
+
+        // 鍵穴（中央下部）
+        const khCx = cx + TILE_SIZE / 2;
+        const khCy = cy + 21;
+        // 金属リング
+        ctx.strokeStyle = '#C8A820';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(khCx, khCy, 3, 0, Math.PI * 2);
+        ctx.stroke();
+        // 黒い小さな穴
+        ctx.fillStyle = '#0A0604';
+        ctx.beginPath();
+        ctx.arc(khCx, khCy, 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        // 鍵穴下の縦線
+        ctx.fillStyle = '#0A0604';
+        ctx.fillRect(khCx - 0.5, khCy + 2, 1, 3);
+
+        // 鍵穴グロー
+        const khShine = 0.4 + 0.3 * Math.sin(now / 500);
+        renderer.drawGlow(khCx, khCy, 6, '#FFD700', khShine);
       }
     }
   }
