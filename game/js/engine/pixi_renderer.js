@@ -1,49 +1,43 @@
 // PixiRenderer - HD-2D風ポストプロセスエフェクト（PixiJS v7ベース）
-// 既存のCanvas 2Dレンダラーの描画結果をテクスチャとして取り込み、
-// ブルーム・被写界深度・ビネット・季節ティントを適用する
+// 方針B: エフェクトのみ方式
+// PixiJSのcanvasにはエフェクトオーバーレイのみ描画（ソーステクスチャのコピーはしない）
+// 既存Canvas 2Dの上に透明背景のPixiJSキャンバスを重ね、
+// ビネット・季節ティント・ソフトグローのみを描画する
 
 class PixiRenderer {
   constructor() {
     this.enabled = false;
     this.app = null;
-    this.postProcessContainer = null;
-    this.sourceTexture = null;
-    this.sourceSprite = null;
+    this.effectContainer = null;
 
-    // エフェクト用レイヤー
-    this.bloomLayer = null;
-    this.dofTopSprite = null;
-    this.dofBottomSprite = null;
-    this.vignetteSprite = null;
-    this.seasonTintSprite = null;
+    // エフェクト用グラフィックス
+    this._vignetteGraphics = null;
+    this._seasonTintGraphics = null;
+    this._edgeGlowGraphics = null;
 
     // エフェクトON/OFFフラグ
-    this.bloomEnabled = true;
-    this.depthOfFieldEnabled = true;
     this.vignetteEnabled = true;
     this.seasonTintEnabled = true;
+    this.edgeGlowEnabled = true;
 
-    // 季節ティントカラー設定
+    // 季節ティントカラー設定（alpha控えめ）
     this.seasonTints = {
-      spring: { r: 255, g: 180, b: 200, a: 0.08 },
-      summer: { r: 255, g: 200, b: 100, a: 0.08 },
-      autumn: { r: 200, g: 100, b: 50, a: 0.08 },
-      winter: { r: 100, g: 150, b: 255, a: 0.08 },
+      spring: { color: 0xFFB4C8, alpha: 0.05 },
+      summer: { color: 0xFFC864, alpha: 0.04 },
+      autumn: { color: 0xC86432, alpha: 0.05 },
+      winter: { color: 0x6496FF, alpha: 0.04 },
     };
 
-    // 季節ごとのブルーム強度
-    this.seasonBloomStrength = {
-      spring: 5,
-      summer: 3,
-      autumn: 3,
-      winter: 4,
+    // 季節ごとのエッジグロー色
+    this.seasonGlow = {
+      spring: { color: 0xFFB7C5, alpha: 0.08 },
+      summer: { color: 0xFFD700, alpha: 0.06 },
+      autumn: { color: 0xDC143C, alpha: 0.07 },
+      winter: { color: 0x4169E1, alpha: 0.06 },
     };
 
     // 内部状態
     this._currentSeason = null;
-    this._vignetteTexture = null;
-    this._dofTopTexture = null;
-    this._dofBottomTexture = null;
   }
 
   /**
@@ -52,11 +46,6 @@ class PixiRenderer {
    * @returns {boolean} 初期化成功ならtrue
    */
   init(gameCanvas) {
-    // PixiJS post-processing temporarily disabled for stability
-    // TODO: Fix texture update issue and re-enable
-    console.log('[PixiRenderer] Post-processing disabled (stability fix). Using Canvas 2D.');
-    return false;
-
     // PixiJSが読み込まれているか確認
     if (typeof PIXI === 'undefined') {
       console.warn('[PixiRenderer] PixiJS not loaded. Falling back to Canvas 2D only.');
@@ -72,11 +61,11 @@ class PixiRenderer {
     try {
       this._gameCanvas = gameCanvas;
 
-      // PixiJS Application作成
+      // PixiJS Application作成（背景は完全透明）
       this.app = new PIXI.Application({
         width: GAME_WIDTH,
         height: GAME_HEIGHT,
-        backgroundAlpha: 0, // 透明背景（下の既存Canvasが見えるように）
+        backgroundAlpha: 0,
         antialias: false,
         resolution: 1,
         autoDensity: false,
@@ -96,27 +85,22 @@ class PixiRenderer {
       const container = gameCanvas.parentElement;
       container.appendChild(pixiCanvas);
 
-      // メインコンテナ
-      this.postProcessContainer = new PIXI.Container();
-      this.app.stage.addChild(this.postProcessContainer);
+      // エフェクト用コンテナ
+      this.effectContainer = new PIXI.Container();
+      this.app.stage.addChild(this.effectContainer);
 
-      // 既存Canvasをテクスチャとして取り込むためのスプライト
-      this.sourceTexture = PIXI.Texture.from(gameCanvas);
-      this.sourceSprite = new PIXI.Sprite(this.sourceTexture);
-      this.postProcessContainer.addChild(this.sourceSprite);
-
-      // エフェクトレイヤーを構築
-      this._createBloomLayer();
-      this._createDepthOfFieldLayers();
+      // エフェクトレイヤーを構築（ソーステクスチャは使わない）
       this._createVignetteLayer();
       this._createSeasonTintLayer();
+      this._createEdgeGlowLayer();
 
-      // 自動レンダリングを無効化（手動で呼ぶ）
-      this.app.ticker.autoStart = false;
-      this.app.ticker.stop();
+      // tickerで自動レンダリング（手動renderは不要）
+      this.app.ticker.add(() => {
+        // 特に毎フレーム更新が必要な処理があればここで
+      });
 
       this.enabled = true;
-      console.log('[PixiRenderer] Initialized successfully with HD-2D post-process effects.');
+      console.log('[PixiRenderer] Initialized (effects-only overlay mode).');
       return true;
 
     } catch (e) {
@@ -144,124 +128,106 @@ class PixiRenderer {
   // ==========================================
 
   /**
-   * ブルームレイヤー — 明るい部分がぼんやり光る
-   * 元のCanvasをぼかしてadd合成で重ねることで簡易ブルームを実現
-   */
-  _createBloomLayer() {
-    this.bloomLayer = new PIXI.Sprite(PIXI.Texture.from(this._gameCanvas));
-    this.bloomLayer.blendMode = PIXI.BLEND_MODES.ADD;
-    this.bloomLayer.alpha = 0.15;
-
-    const blurFilter = new PIXI.BlurFilter();
-    blurFilter.blur = 4;
-    blurFilter.quality = 2;
-    this.bloomLayer.filters = [blurFilter];
-    this._bloomFilter = blurFilter;
-
-    this.postProcessContainer.addChild(this.bloomLayer);
-  }
-
-  /**
-   * 被写界深度レイヤー — 上部と下部にぼかしをかけ、ジオラマ感を演出
-   * グラデーションマスクで中央はクリア、端はぼける
-   */
-  _createDepthOfFieldLayers() {
-    // 上部ぼかし用のグラデーションを生成
-    const dofCanvas = document.createElement('canvas');
-    dofCanvas.width = GAME_WIDTH;
-    dofCanvas.height = GAME_HEIGHT;
-    const dofCtx = dofCanvas.getContext('2d');
-
-    // 上部: 白→透明のグラデーション（白い部分がぼかし適用域）
-    const gradTop = dofCtx.createLinearGradient(0, 0, 0, GAME_HEIGHT * 0.35);
-    gradTop.addColorStop(0, 'rgba(0,0,0,0.25)');
-    gradTop.addColorStop(1, 'rgba(0,0,0,0)');
-    dofCtx.fillStyle = gradTop;
-    dofCtx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT * 0.35);
-
-    // 下部: 透明→白のグラデーション
-    const gradBottom = dofCtx.createLinearGradient(0, GAME_HEIGHT * 0.7, 0, GAME_HEIGHT);
-    gradBottom.addColorStop(0, 'rgba(0,0,0,0)');
-    gradBottom.addColorStop(1, 'rgba(0,0,0,0.3)');
-    dofCtx.fillStyle = gradBottom;
-    dofCtx.fillRect(0, GAME_HEIGHT * 0.7, GAME_WIDTH, GAME_HEIGHT * 0.3);
-
-    // ぼかしたソースを表示するスプライト
-    this.dofSprite = new PIXI.Sprite(PIXI.Texture.from(this._gameCanvas));
-    const dofBlur = new PIXI.BlurFilter();
-    dofBlur.blur = 3;
-    dofBlur.quality = 2;
-    this.dofSprite.filters = [dofBlur];
-    this._dofBlurFilter = dofBlur;
-
-    // マスク用スプライト（上下のグラデーション部分のみ表示）
-    this._dofMaskTexture = PIXI.Texture.from(dofCanvas);
-    const maskSprite = new PIXI.Sprite(this._dofMaskTexture);
-    this.dofSprite.mask = maskSprite;
-
-    this.postProcessContainer.addChild(this.dofSprite);
-    this.postProcessContainer.addChild(maskSprite);
-  }
-
-  /**
-   * ビネットレイヤー — 画面端を暗くして没入感を高める
+   * ビネットレイヤー — 放射グラデーション風の暗いオーバーレイ
+   * PIXI.Graphicsで楕円の同心円リングを重ねて放射グラデーションを近似する
    */
   _createVignetteLayer() {
+    // オフスクリーンCanvasで放射グラデーションを描画し、テクスチャ化する
     const vigCanvas = document.createElement('canvas');
     vigCanvas.width = GAME_WIDTH;
     vigCanvas.height = GAME_HEIGHT;
     const vigCtx = vigCanvas.getContext('2d');
 
-    // 放射グラデーション: 中央は透明、端は暗い
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
     const outerRadius = Math.sqrt(cx * cx + cy * cy);
     const grad = vigCtx.createRadialGradient(cx, cy, outerRadius * 0.35, cx, cy, outerRadius);
     grad.addColorStop(0, 'rgba(0,0,0,0)');
     grad.addColorStop(0.5, 'rgba(0,0,0,0)');
-    grad.addColorStop(1, 'rgba(0,0,0,0.45)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.4)');
     vigCtx.fillStyle = grad;
     vigCtx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
 
-    this._vignetteTexture = PIXI.Texture.from(vigCanvas);
-    this.vignetteSprite = new PIXI.Sprite(this._vignetteTexture);
-    this.vignetteSprite.blendMode = PIXI.BLEND_MODES.MULTIPLY;
-    this.postProcessContainer.addChild(this.vignetteSprite);
+    const vigTexture = PIXI.Texture.from(vigCanvas);
+    this._vignetteSprite = new PIXI.Sprite(vigTexture);
+    // NORMALブレンド — 半透明の黒がそのまま重なる
+    this._vignetteSprite.blendMode = PIXI.BLEND_MODES.NORMAL;
+    this.effectContainer.addChild(this._vignetteSprite);
   }
 
   /**
-   * 季節ティントレイヤー — 季節に応じた色を画面全体にうっすら乗せる
+   * 季節ティントレイヤー — 薄い色のrect（ADDブレンド）
    */
   _createSeasonTintLayer() {
-    this.seasonTintSprite = new PIXI.Graphics();
-    this.seasonTintSprite.beginFill(0xFFB4C8, 0.08); // デフォルト: 春
-    this.seasonTintSprite.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.seasonTintSprite.endFill();
-    this.seasonTintSprite.blendMode = PIXI.BLEND_MODES.ADD;
-    this.postProcessContainer.addChild(this.seasonTintSprite);
+    this._seasonTintGraphics = new PIXI.Graphics();
+    // デフォルト: 春
+    this._drawSeasonTint('spring');
+    this._seasonTintGraphics.blendMode = PIXI.BLEND_MODES.ADD;
+    this.effectContainer.addChild(this._seasonTintGraphics);
+  }
+
+  /**
+   * エッジグローレイヤー — 画面の四隅・端に季節の色で柔らかい光を加える
+   * ソースcanvasをぼかすのではなく、独立した光のオーバーレイ
+   */
+  _createEdgeGlowLayer() {
+    // オフスクリーンCanvasで四隅にソフトなグローを描画
+    this._edgeGlowCanvas = document.createElement('canvas');
+    this._edgeGlowCanvas.width = GAME_WIDTH;
+    this._edgeGlowCanvas.height = GAME_HEIGHT;
+    this._edgeGlowCtx = this._edgeGlowCanvas.getContext('2d');
+
+    this._drawEdgeGlow('spring');
+
+    this._edgeGlowTexture = PIXI.Texture.from(this._edgeGlowCanvas);
+    this._edgeGlowSprite = new PIXI.Sprite(this._edgeGlowTexture);
+    this._edgeGlowSprite.blendMode = PIXI.BLEND_MODES.ADD;
+    this.effectContainer.addChild(this._edgeGlowSprite);
   }
 
   // ==========================================
-  // 季節ティント更新
+  // 描画ヘルパー
   // ==========================================
 
-  _updateSeasonTint(season) {
-    if (!season || season === this._currentSeason) return;
-    this._currentSeason = season;
+  _drawSeasonTint(season) {
+    const tint = this.seasonTints[season] || this.seasonTints.spring;
+    this._seasonTintGraphics.clear();
+    this._seasonTintGraphics.beginFill(tint.color, tint.alpha);
+    this._seasonTintGraphics.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this._seasonTintGraphics.endFill();
+  }
 
-    const tint = this.seasonTints[season];
-    if (!tint) return;
+  _drawEdgeGlow(season) {
+    const glow = this.seasonGlow[season] || this.seasonGlow.spring;
+    const ctx = this._edgeGlowCtx;
+    const w = GAME_WIDTH;
+    const h = GAME_HEIGHT;
 
-    // Graphicsを作り直し
-    this.seasonTintSprite.clear();
-    const color = (tint.r << 16) | (tint.g << 8) | tint.b;
-    this.seasonTintSprite.beginFill(color, tint.a);
-    this.seasonTintSprite.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    this.seasonTintSprite.endFill();
+    ctx.clearRect(0, 0, w, h);
 
-    // ブルーム強度も季節に応じて調整
-    if (this._bloomFilter) {
-      this._bloomFilter.blur = this.seasonBloomStrength[season] || 4;
+    // CSSカラー文字列に変換
+    const r = (glow.color >> 16) & 0xFF;
+    const g = (glow.color >> 8) & 0xFF;
+    const b = glow.color & 0xFF;
+    const a = glow.alpha;
+
+    // 四隅に放射グラデーションのグローを配置
+    const corners = [
+      { x: 0, y: 0 },
+      { x: w, y: 0 },
+      { x: 0, y: h },
+      { x: w, y: h },
+    ];
+
+    const radius = Math.min(w, h) * 0.45;
+
+    for (const corner of corners) {
+      const grad = ctx.createRadialGradient(corner.x, corner.y, 0, corner.x, corner.y, radius);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${a})`);
+      grad.addColorStop(0.4, `rgba(${r},${g},${b},${a * 0.4})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
     }
   }
 
@@ -270,42 +236,37 @@ class PixiRenderer {
   // ==========================================
 
   /**
-   * 毎フレーム呼び出し — 既存Canvasの描画結果にエフェクトをかける
-   * @param {HTMLCanvasElement} sourceCanvas 既存Canvas
+   * 毎フレーム呼び出し — 季節に応じてティント・グローを更新
+   * @param {HTMLCanvasElement} sourceCanvas 既存Canvas（未使用だがAPI互換のため残す）
    * @param {string} season 現在の季節 (spring/summer/autumn/winter)
    */
   applyPostProcess(sourceCanvas, season) {
     if (!this.enabled) return;
 
     try {
-      // 1. ソーステクスチャを更新（既存Canvasの内容を反映）
-      this.sourceTexture.update();
-      if (this.bloomLayer.texture !== this.sourceTexture) {
-        this.bloomLayer.texture = this.sourceTexture;
-      }
-      if (this.dofSprite.texture !== this.sourceTexture) {
-        this.dofSprite.texture = this.sourceTexture;
+      // エフェクトの有効/無効を反映
+      this._vignetteSprite.visible = this.vignetteEnabled;
+      this._seasonTintGraphics.visible = this.seasonTintEnabled;
+      this._edgeGlowSprite.visible = this.edgeGlowEnabled;
+
+      // 季節が変わった場合のみティント・グローを再描画
+      if (season && season !== this._currentSeason) {
+        this._currentSeason = season;
+
+        if (this.seasonTintEnabled) {
+          this._drawSeasonTint(season);
+        }
+
+        if (this.edgeGlowEnabled) {
+          this._drawEdgeGlow(season);
+          // テクスチャを更新
+          this._edgeGlowTexture.update();
+        }
       }
 
-      // 2. エフェクトの有効/無効を反映
-      this.bloomLayer.visible = this.bloomEnabled;
-      this.dofSprite.visible = this.depthOfFieldEnabled;
-      if (this.dofSprite.mask) {
-        this.dofSprite.mask.visible = this.depthOfFieldEnabled;
-      }
-      this.vignetteSprite.visible = this.vignetteEnabled;
-      this.seasonTintSprite.visible = this.seasonTintEnabled;
-
-      // 3. 季節ティント更新
-      if (this.seasonTintEnabled && season) {
-        this._updateSeasonTint(season);
-      }
-
-      // 4. レンダリング実行
-      this.app.render();
+      // tickerが自動レンダリングするので、手動renderは不要
 
     } catch (e) {
-      // エラー時は無効化してCanvas 2Dにフォールバック
       console.warn('[PixiRenderer] Post-process error, disabling:', e.message);
       this.enabled = false;
       this._hidePixiCanvas();
@@ -318,15 +279,17 @@ class PixiRenderer {
 
   /**
    * エフェクトの有効/無効を切り替え
-   * @param {string} effect 'bloom' | 'dof' | 'vignette' | 'seasonTint'
+   * @param {string} effect 'vignette' | 'seasonTint' | 'edgeGlow'
    * @param {boolean} enabled
    */
   setEffectEnabled(effect, enabled) {
     switch (effect) {
-      case 'bloom': this.bloomEnabled = enabled; break;
-      case 'dof': this.depthOfFieldEnabled = enabled; break;
       case 'vignette': this.vignetteEnabled = enabled; break;
       case 'seasonTint': this.seasonTintEnabled = enabled; break;
+      case 'edgeGlow': this.edgeGlowEnabled = enabled; break;
+      // レガシー互換
+      case 'bloom': this.edgeGlowEnabled = enabled; break;
+      case 'dof': break; // 被写界深度は廃止
     }
   }
 
@@ -334,20 +297,9 @@ class PixiRenderer {
    * 全エフェクトのON/OFF
    */
   setAllEffects(enabled) {
-    this.bloomEnabled = enabled;
-    this.depthOfFieldEnabled = enabled;
     this.vignetteEnabled = enabled;
     this.seasonTintEnabled = enabled;
-  }
-
-  /**
-   * ブルーム強度を直接設定
-   * @param {number} strength 0〜10程度
-   */
-  setBloomStrength(strength) {
-    if (this._bloomFilter) {
-      this._bloomFilter.blur = strength;
-    }
+    this.edgeGlowEnabled = enabled;
   }
 
   /**
@@ -391,12 +343,13 @@ class PixiRenderer {
    */
   destroy() {
     this._cleanup();
-    this.sourceTexture = null;
-    this.sourceSprite = null;
-    this.bloomLayer = null;
-    this.dofSprite = null;
-    this.vignetteSprite = null;
-    this.seasonTintSprite = null;
+    this._vignetteSprite = null;
+    this._seasonTintGraphics = null;
+    this._edgeGlowSprite = null;
+    this._edgeGlowTexture = null;
+    this._edgeGlowCanvas = null;
+    this._edgeGlowCtx = null;
+    this.effectContainer = null;
   }
 }
 
@@ -406,10 +359,6 @@ class PixiRenderer {
 (function () {
   // PixiRendererのグローバルインスタンス
   window.pixiRenderer = new PixiRenderer();
-
-  // DOMContentLoaded後に初期化
-  // main.jsでGameが初期化された後に実行されるよう、少し遅延させる
-  const _origDOMContentLoaded = [];
 
   function hookPixiRenderer() {
     // gameインスタンスが存在するまで待つ
@@ -423,7 +372,7 @@ class PixiRenderer {
             // 元のdrawを実行（Canvas 2Dに描画）
             originalDraw.call(this);
 
-            // ポストプロセスを適用
+            // ポストプロセスを適用（季節に応じたティント更新のみ）
             const season = this.state.party
               ? this.state.party.getLeader()?.currentSeason || SEASON.SPRING
               : SEASON.SPRING;
@@ -437,7 +386,7 @@ class PixiRenderer {
       }
     };
 
-    // main.jsの実行後にチェック開始（同期scriptなので次のrAFで十分）
+    // main.jsの実行後にチェック開始
     requestAnimationFrame(checkGame);
   }
 

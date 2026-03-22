@@ -724,32 +724,33 @@ class BattleScene extends Scene {
 
   _hitTestCommand(x, y) {
     const panelX = 520;
-    const panelY = 430;
+    const panelY = 404;
     const btnW = 100;
-    const btnH = 42;
+    const btnH = 44;
     const gap = 8;
 
     for (let i = 0; i < 4; i++) {
       const col = i % 2;
       const row = Math.floor(i / 2);
-      const bx = panelX + col * (btnW + gap);
-      const by = panelY + row * (btnH + gap);
+      const bx = panelX + 10 + col * (btnW + gap);
+      const by = panelY + 10 + row * (btnH + gap);
       if (x >= bx && x <= bx + btnW && y >= by && y <= by + btnH) return i;
     }
     return -1;
   }
 
   _hitTestUnity(x, y) {
-    return x >= 740 && x <= 940 && y >= 430 && y <= 472;
+    return x >= 750 && x <= 940 && y >= 414 && y <= 458;
   }
 
   _hitTestSkillList(x, y, count) {
     const panelX = 510;
-    const panelY = 424;
-    const itemH = 28;
+    const panelY = 404;
+    const headerH = 24;
+    const itemH = 30;
     for (let i = 0; i < count; i++) {
-      const iy = panelY + 6 + i * itemH;
-      if (x >= panelX && x <= 940 && y >= iy && y <= iy + itemH) return i;
+      const iy = panelY + headerH + 4 + i * itemH;
+      if (x >= panelX && x <= 950 && y >= iy && y <= iy + itemH) return i;
     }
     return -1;
   }
@@ -800,11 +801,15 @@ class BattleScene extends Scene {
         break;
     }
 
-    // turn indicator
+    // Turn indicator with panel
     const curUnit = this.engine.currentUnit;
     if (curUnit && (this.uiState === 'command' || this.uiState === 'skillSelect')) {
-      renderer.drawText(`${curUnit.name}のターン`, GAME_WIDTH / 2, 8, {
-        size: 18, align: 'center', color: '#FFD700',
+      const turnText = `${curUnit.name}のターン`;
+      const tw = 200;
+      renderer.drawRoundedRect(GAME_WIDTH / 2 - tw / 2, 4, tw, 28, 6, 'rgba(0,0,0,0.6)', 'rgba(255,215,0,0.4)');
+      renderer.drawText(turnText, GAME_WIDTH / 2, 8, {
+        size: 16, align: 'center', color: '#FFD700',
+        outline: true, outlineColor: '#000', outlineWidth: 2,
       });
     }
   }
@@ -813,10 +818,132 @@ class BattleScene extends Scene {
 
   _drawBackground(renderer) {
     const colors = SEASON_COLORS[this.background] || SEASON_COLORS[SEASON.SPRING];
-    renderer.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT, colors.bg);
-    renderer.drawRect(0, 0, GAME_WIDTH, 80, colors.secondary, 0.3);
-    renderer.drawRect(0, 350, GAME_WIDTH, 190, colors.primary, 0.15);
-    renderer.drawRect(0, 380, GAME_WIDTH, 160, '#2a2a3a', 0.8);
+    const season = this.background;
+
+    // === Sky gradient (top) ===
+    const skyTop = {
+      [SEASON.SPRING]: ['#FFE0EC', '#FFDAE8'],
+      [SEASON.SUMMER]: ['#87CEEB', '#4AA3DF'],
+      [SEASON.AUTUMN]: ['#FFD4A8', '#E8A060'],
+      [SEASON.WINTER]: ['#C8D8F0', '#8AA8D0'],
+    };
+    const sky = skyTop[season] || skyTop[SEASON.SPRING];
+    renderer.drawGradientRect(0, 0, GAME_WIDTH, 200, sky[0], sky[1]);
+
+    // === Distant mountains (silhouettes) ===
+    const mountainColor = {
+      [SEASON.SPRING]: 'rgba(180,200,160,0.5)',
+      [SEASON.SUMMER]: 'rgba(40,120,50,0.5)',
+      [SEASON.AUTUMN]: 'rgba(160,100,60,0.45)',
+      [SEASON.WINTER]: 'rgba(160,170,200,0.5)',
+    };
+    const mtnC = mountainColor[season] || mountainColor[SEASON.SPRING];
+    const ctx = renderer.ctx;
+    ctx.fillStyle = mtnC;
+    // Mountain range 1 (far)
+    ctx.beginPath();
+    ctx.moveTo(0, 180);
+    ctx.lineTo(80, 120); ctx.lineTo(180, 155); ctx.lineTo(300, 100);
+    ctx.lineTo(420, 140); ctx.lineTo(540, 90); ctx.lineTo(660, 130);
+    ctx.lineTo(780, 105); ctx.lineTo(880, 145); ctx.lineTo(GAME_WIDTH, 120);
+    ctx.lineTo(GAME_WIDTH, 200); ctx.lineTo(0, 200);
+    ctx.closePath();
+    ctx.fill();
+
+    // Mountain range 2 (near, darker)
+    const mtnC2 = {
+      [SEASON.SPRING]: 'rgba(120,160,100,0.5)',
+      [SEASON.SUMMER]: 'rgba(20,80,30,0.5)',
+      [SEASON.AUTUMN]: 'rgba(130,70,40,0.5)',
+      [SEASON.WINTER]: 'rgba(120,130,170,0.5)',
+    };
+    ctx.fillStyle = mtnC2[season] || mtnC2[SEASON.SPRING];
+    ctx.beginPath();
+    ctx.moveTo(0, 210);
+    ctx.lineTo(120, 165); ctx.lineTo(250, 190); ctx.lineTo(400, 155);
+    ctx.lineTo(550, 185); ctx.lineTo(700, 160); ctx.lineTo(850, 180);
+    ctx.lineTo(GAME_WIDTH, 170);
+    ctx.lineTo(GAME_WIDTH, 230); ctx.lineTo(0, 230);
+    ctx.closePath();
+    ctx.fill();
+
+    // === Forest/tree silhouettes ===
+    const treeColor = {
+      [SEASON.SPRING]: 'rgba(100,160,80,0.55)',
+      [SEASON.SUMMER]: 'rgba(30,100,20,0.6)',
+      [SEASON.AUTUMN]: 'rgba(180,80,30,0.5)',
+      [SEASON.WINTER]: 'rgba(90,100,130,0.45)',
+    };
+    ctx.fillStyle = treeColor[season] || treeColor[SEASON.SPRING];
+    // Simple tree tops as rounded bumps
+    for (let tx = -20; tx < GAME_WIDTH + 20; tx += 45 + Math.sin(tx * 0.1) * 15) {
+      const treeH = 25 + Math.sin(tx * 0.05) * 12;
+      ctx.beginPath();
+      ctx.arc(tx, 235, treeH, Math.PI, 0);
+      ctx.fill();
+    }
+
+    // === Mid-ground field ===
+    const fieldTop = {
+      [SEASON.SPRING]: '#C8E6B0',
+      [SEASON.SUMMER]: '#4CAF50',
+      [SEASON.AUTUMN]: '#C08040',
+      [SEASON.WINTER]: '#B8C8E0',
+    };
+    const fieldBot = {
+      [SEASON.SPRING]: '#A8D490',
+      [SEASON.SUMMER]: '#2E7D32',
+      [SEASON.AUTUMN]: '#8B5A2B',
+      [SEASON.WINTER]: '#98A8C8',
+    };
+    renderer.drawGradientRect(0, 230, GAME_WIDTH, 150, fieldTop[season] || '#C8E6B0', fieldBot[season] || '#A8D490');
+
+    // === Ground / battle field ===
+    const groundTop = {
+      [SEASON.SPRING]: '#8BB870',
+      [SEASON.SUMMER]: '#1B5E20',
+      [SEASON.AUTUMN]: '#6B4226',
+      [SEASON.WINTER]: '#788098',
+    };
+    renderer.drawGradientRect(0, 350, GAME_WIDTH, 60, groundTop[season] || '#8BB870', '#2a2a3a');
+    renderer.drawRect(0, 395, GAME_WIDTH, GAME_HEIGHT - 395, '#1a1a2a');
+
+    // === Ambient glow from season ===
+    const glowAlpha = 0.08 + 0.04 * Math.sin(Date.now() / 2000);
+    renderer.drawGlow(GAME_WIDTH / 2, 180, 400, colors.primary, glowAlpha);
+
+    // === Season-specific decorative elements ===
+    ctx.save();
+    if (season === SEASON.SPRING) {
+      // Scattered cherry blossom trees (pink blobs in mid-ground)
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = '#FFB7C5';
+      ctx.beginPath(); ctx.arc(150, 250, 30, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(700, 260, 25, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    } else if (season === SEASON.SUMMER) {
+      // Heat shimmer lines
+      ctx.globalAlpha = 0.06;
+      ctx.fillStyle = '#FFD700';
+      for (let sy = 200; sy < 350; sy += 20) {
+        const wave = Math.sin(Date.now() / 1000 + sy * 0.1) * 3;
+        renderer.drawRect(0, sy + wave, GAME_WIDTH, 2, '#FFD700', 0.06);
+      }
+      ctx.globalAlpha = 1;
+    } else if (season === SEASON.WINTER) {
+      // Ground snow patches
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = '#E8F0FF';
+      for (let sx = 30; sx < GAME_WIDTH; sx += 100 + Math.sin(sx) * 30) {
+        ctx.beginPath();
+        ctx.ellipse(sx, 370, 40 + Math.sin(sx * 0.1) * 15, 8, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+
+    // Particles are drawn by renderer automatically
   }
 
   // ---- Units ----
@@ -840,50 +967,123 @@ class BattleScene extends Scene {
     const offset = this.spriteOffsets.get(unit) || { x: 0, y: 0 };
     const x = pos.x + offset.x;
     const y = pos.y + offset.y;
-    const w = 48;
-    const h = 64;
+    const w = 56;
+    const h = 72;
+    const scale = 4;
 
     if (!unit.alive) {
-      renderer.drawRect(x, y + h * 0.6, w, h * 0.4, '#555', 0.4);
+      // Dead unit: faded silhouette on the ground
+      renderer.ctx.save();
+      renderer.ctx.globalAlpha = 0.35;
+      renderer.drawRect(x + 4, y + h * 0.65, w - 8, h * 0.35, '#444');
+      renderer.drawText('×', x + w / 2, y + h * 0.55, {
+        size: 24, align: 'center', color: '#888',
+      });
+      renderer.ctx.restore();
       return;
     }
 
-    if (unit.isGuarding) {
-      renderer.drawRoundedRect(x - 6, y - 6, w + 12, h + 12, 6, null, SEASON_COLORS[unit.currentSeason].primary);
-      renderer.drawRect(x - 4, y - 4, w + 8, h + 8, SEASON_COLORS[unit.currentSeason].primary, 0.15);
-    }
-
     const seasonColor = SEASON_COLORS[unit.currentSeason];
-    const sprite = unit.spriteData || { bodyColor: isEnemy ? '#8B0000' : '#336699', headColor: isEnemy ? '#CC4444' : '#6699CC' };
-    renderer.drawSprite(x, y, w, h, {
-      bodyColor: sprite.bodyColor,
-      headColor: sprite.headColor,
-      season: unit.currentSeason,
-    });
 
-    renderer.drawText(unit.name, x + w / 2, y - 18, {
-      size: 12, align: 'center', color: isEnemy ? '#FF9999' : '#99CCFF',
-    });
-
-    if (isEnemy) {
-      renderer.drawBar(x, y - 8, w, 5, unit.hp, unit.maxHp, '#E74C3C', '#333');
+    // === Guard shield effect ===
+    if (unit.isGuarding) {
+      const pulse = 0.15 + 0.08 * Math.sin(Date.now() / 400);
+      renderer.drawGlow(x + w / 2, y + h / 2, w * 0.9, seasonColor.primary, pulse + 0.1);
+      renderer.drawRoundedRect(x - 6, y - 6, w + 12, h + 12, 8, null, seasonColor.primary);
+      renderer.drawRect(x - 4, y - 4, w + 8, h + 8, seasonColor.primary, 0.12);
     }
 
+    // === Season aura glow (behind character) ===
+    const auraPulse = 0.12 + 0.06 * Math.sin(Date.now() / 600);
+    renderer.drawGlow(x + w / 2, y + h / 2, w * 0.7, seasonColor.primary, auraPulse);
+
+    // === Character rendering with drawPixelChar ===
+    const sprite = unit.spriteData || {};
+    let pixelType = null;
+
+    if (!isEnemy) {
+      // Allies: use hero/healer pixel chars
+      const allyIdx = this.engine.allies.indexOf(unit);
+      pixelType = (allyIdx === 1) ? 'healer' : 'hero';
+    } else {
+      // Enemies: use pixelType from spriteData if available
+      pixelType = sprite.pixelType || null;
+    }
+
+    if (pixelType && PIXEL_CHARS[pixelType]) {
+      const frame = Math.floor(Date.now() / 500) % 2;
+      const direction = isEnemy ? 'left' : 'right';
+      renderer.drawPixelChar(x + 4, y + 4, scale, pixelType, {
+        direction,
+        frame,
+        season: unit.currentSeason,
+      });
+    } else {
+      // Fallback: drawSprite (for enemies without pixel data)
+      const fallbackSprite = {
+        bodyColor: sprite.bodyColor || (isEnemy ? '#8B0000' : '#336699'),
+        headColor: sprite.headColor || (isEnemy ? '#CC4444' : '#6699CC'),
+        season: unit.currentSeason,
+      };
+      renderer.drawSprite(x, y, w, h, fallbackSprite);
+    }
+
+    // === Character name (above) ===
+    renderer.drawText(unit.name, x + w / 2, y - 22, {
+      size: 13, align: 'center', color: isEnemy ? '#FF9999' : '#AADDFF',
+      outline: true, outlineColor: '#000', outlineWidth: 3,
+    });
+
+    // === HP bar (below character, for ALL units) ===
+    const barW = w + 4;
+    const barX = x - 2;
+    const barY = y + h + 2;
+    const hpRatio = unit.hp / unit.maxHp;
+    let hpColor;
+    if (hpRatio > 0.5) {
+      hpColor = '#2ECC71';
+    } else if (hpRatio > 0.25) {
+      hpColor = '#F1C40F';
+    } else {
+      hpColor = '#E74C3C';
+    }
+    renderer.drawBar(barX, barY, barW, 6, unit.hp, unit.maxHp, hpColor, '#222');
+    // HP text
+    if (!isEnemy) {
+      renderer.drawText(`${unit.hp}/${unit.maxHp}`, x + w / 2, barY + 8, {
+        size: 9, align: 'center', color: '#CCC',
+      });
+    }
+
+    // === Season indicator dot + label ===
+    const dotY = isEnemy ? barY + 10 : barY + 20;
     const dotColor = seasonColor.primary;
-    renderer.drawRect(x + w / 2 - 4, y + h + 4, 8, 8, dotColor);
-    renderer.drawText(SEASON_NAMES[unit.currentSeason], x + w / 2, y + h + 14, {
+    renderer.drawRect(x + w / 2 - 5, dotY, 10, 10, dotColor);
+    renderer.drawRectOutline(x + w / 2 - 5, dotY, 10, 10, '#FFF', 1);
+    renderer.drawText(SEASON_NAMES[unit.currentSeason], x + w / 2, dotY + 12, {
       size: 10, align: 'center', color: dotColor,
     });
 
+    // === Status effects ===
+    const statusY = y + h / 2 - 8;
     if (unit.stunTurns > 0) {
-      renderer.drawText('凍結', x + w / 2, y + h / 2, {
+      renderer.drawGlow(x + w / 2, statusY + 8, 30, '#88CCFF', 0.3);
+      renderer.drawText('凍結', x + w / 2, statusY, {
         size: 14, align: 'center', color: '#88CCFF',
+        outline: true, outlineColor: '#003', outlineWidth: 2,
       });
     }
     if (unit.skillSealTurns > 0) {
-      renderer.drawText('封印', x + w / 2, y + h / 2 + 16, {
+      renderer.drawGlow(x + w / 2, statusY + 24, 25, '#CC88FF', 0.25);
+      renderer.drawText('封印', x + w / 2, statusY + 18, {
         size: 12, align: 'center', color: '#CC88FF',
+        outline: true, outlineColor: '#200030', outlineWidth: 2,
       });
+    }
+
+    // === Guard buff icon ===
+    if (unit.isGuarding) {
+      renderer.drawText('🛡', x + w - 4, y - 4, { size: 14, align: 'center', color: '#FFD700' });
     }
   }
 
@@ -891,11 +1091,16 @@ class BattleScene extends Scene {
 
   _drawFloatingTexts(renderer) {
     for (const ft of this.floatingTexts) {
+      // Glow behind damage numbers for emphasis
+      const glowAlpha = Math.min(1, ft.timer / 0.6) * 0.4;
+      renderer.drawGlow(ft.x, ft.y + 8, (ft.size || 22) * 0.8, ft.color, glowAlpha);
       renderer.drawText(ft.text, ft.x, ft.y, {
         size: ft.size || 22,
         color: ft.color,
         align: 'center',
-        shadow: true,
+        outline: true,
+        outlineColor: '#000',
+        outlineWidth: 3,
       });
     }
   }
@@ -904,38 +1109,84 @@ class BattleScene extends Scene {
 
   _drawStatusPanel(renderer) {
     const panelX = 8;
-    const panelY = 412;
+    const panelY = 404;
     const panelW = 500;
-    const panelH = 122;
+    const panelH = 132;
 
-    renderer.drawRoundedRect(panelX, panelY, panelW, panelH, 8, 'rgba(0,0,0,0.75)', '#555');
+    // Panel background with gradient feel
+    renderer.drawRoundedRect(panelX, panelY, panelW, panelH, 10, 'rgba(10,10,30,0.85)', 'rgba(100,100,140,0.6)');
 
     const allies = this.engine.allies;
-    const rowH = Math.min(38, Math.floor((panelH - 12) / Math.max(allies.length, 1)));
+    const rowH = Math.min(42, Math.floor((panelH - 10) / Math.max(allies.length, 1)));
 
     for (let i = 0; i < allies.length; i++) {
       const a = allies[i];
-      const ry = panelY + 8 + i * rowH;
+      const ry = panelY + 6 + i * rowH;
 
       const isCurrent = (this.engine.currentUnit === a && (this.uiState === 'command' || this.uiState === 'skillSelect'));
       if (isCurrent) {
-        renderer.drawRect(panelX + 2, ry - 1, panelW - 4, rowH - 2, '#FFD700', 0.15);
+        renderer.drawRoundedRect(panelX + 3, ry - 1, panelW - 6, rowH - 2, 4, 'rgba(255,215,0,0.12)', 'rgba(255,215,0,0.35)');
+        // Active indicator arrow
+        renderer.drawText('\u25B6', panelX + 6, ry + 4, { size: 10, color: '#FFD700' });
       }
 
-      const nameColor = a.alive ? '#FFF' : '#666';
-      renderer.drawText(a.name, panelX + 12, ry + 2, { size: 13, color: nameColor });
-      renderer.drawSeasonGauge(panelX + 90, ry + 2, a.currentSeason);
+      // Name + Level
+      const nameColor = a.alive ? '#FFF' : '#555';
+      const lvlText = a.level ? `Lv.${a.level}` : '';
+      renderer.drawText(a.name, panelX + 18, ry + 2, { size: 13, color: nameColor });
+      if (lvlText) {
+        renderer.drawText(lvlText, panelX + 18, ry + 17, { size: 9, color: '#888' });
+      }
 
-      const barX = panelX + 240;
-      const hpColor = (a.hp / a.maxHp) < 0.3 ? '#E74C3C' : '#2ECC71';
-      renderer.drawText('HP', barX, ry + 2, { size: 11, color: '#AAA' });
-      renderer.drawBar(barX + 22, ry + 4, 100, 10, a.hp, a.maxHp, hpColor);
-      renderer.drawText(`${a.hp}/${a.maxHp}`, barX + 125, ry + 2, { size: 11, color: '#CCC' });
+      // Season gauge
+      renderer.drawSeasonGauge(panelX + 84, ry + 2, a.currentSeason);
 
-      const mpX = panelX + 400;
-      renderer.drawText('MP', mpX, ry + 2, { size: 11, color: '#AAA' });
-      renderer.drawBar(mpX + 22, ry + 4, 50, 10, a.mp, a.maxMp, '#3498DB');
-      renderer.drawText(`${a.mp}`, mpX + 75, ry + 2, { size: 11, color: '#88BBFF' });
+      // HP Bar with color gradient (green > yellow > red)
+      const barX = panelX + 224;
+      const hpRatio = a.hp / a.maxHp;
+      let hpColor;
+      if (hpRatio > 0.5) {
+        hpColor = '#2ECC71';
+      } else if (hpRatio > 0.25) {
+        hpColor = '#F1C40F';
+      } else {
+        hpColor = '#E74C3C';
+      }
+      renderer.drawText('HP', barX, ry + 2, { size: 10, color: '#8A8' });
+      renderer.drawBar(barX + 20, ry + 4, 110, 11, a.hp, a.maxHp, hpColor, '#1a1a2a');
+      renderer.drawText(`${a.hp}/${a.maxHp}`, barX + 134, ry + 2, { size: 10, color: '#CCC' });
+
+      // MP Bar
+      const mpX = panelX + 396;
+      renderer.drawText('MP', mpX, ry + 2, { size: 10, color: '#88A' });
+      renderer.drawBar(mpX + 20, ry + 4, 52, 11, a.mp, a.maxMp, '#3498DB', '#1a1a2a');
+      renderer.drawText(`${a.mp}/${a.maxMp}`, mpX + 76, ry + 2, { size: 10, color: '#88BBFF' });
+
+      // Buff indicators on second line
+      let buffX = barX;
+      if (a.isGuarding) {
+        renderer.drawRect(buffX, ry + 20, 36, 14, 'rgba(100,180,255,0.25)');
+        renderer.drawRectOutline(buffX, ry + 20, 36, 14, '#88BBFF');
+        renderer.drawText('防御', buffX + 18, ry + 21, { size: 9, align: 'center', color: '#AADDFF' });
+        buffX += 40;
+      }
+      if (a.nextSkillBoost) {
+        renderer.drawRect(buffX, ry + 20, 42, 14, 'rgba(255,200,60,0.25)');
+        renderer.drawRectOutline(buffX, ry + 20, 42, 14, '#FFD700');
+        renderer.drawText('強化', buffX + 21, ry + 21, { size: 9, align: 'center', color: '#FFD700' });
+        buffX += 46;
+      }
+      if (a.stunTurns > 0) {
+        renderer.drawRect(buffX, ry + 20, 36, 14, 'rgba(100,180,255,0.2)');
+        renderer.drawRectOutline(buffX, ry + 20, 36, 14, '#88CCFF');
+        renderer.drawText('凍結', buffX + 18, ry + 21, { size: 9, align: 'center', color: '#88CCFF' });
+        buffX += 40;
+      }
+      if (a.skillSealTurns > 0) {
+        renderer.drawRect(buffX, ry + 20, 36, 14, 'rgba(180,100,255,0.2)');
+        renderer.drawRectOutline(buffX, ry + 20, 36, 14, '#CC88FF');
+        renderer.drawText('封印', buffX + 18, ry + 21, { size: 9, align: 'center', color: '#CC88FF' });
+      }
     }
   }
 
@@ -943,15 +1194,25 @@ class BattleScene extends Scene {
 
   _drawCommandMenu(renderer) {
     const panelX = 520;
-    const panelY = 420;
+    const panelY = 404;
     const panelW = 430;
-    const panelH = 114;
+    const panelH = 132;
 
-    renderer.drawRoundedRect(panelX, panelY, panelW, panelH, 8, 'rgba(0,0,0,0.8)', '#777');
+    // Panel background
+    renderer.drawRoundedRect(panelX, panelY, panelW, panelH, 10, 'rgba(10,10,30,0.88)', 'rgba(100,100,140,0.6)');
 
     const btnW = 100;
-    const btnH = 42;
+    const btnH = 44;
     const gap = 8;
+
+    // Season-themed accent colors for each command
+    const seasonColors = SEASON_COLORS[this.background] || SEASON_COLORS[SEASON.SPRING];
+    const cmdAccents = [
+      seasonColors.primary,   // 巡る — season primary
+      '#4488CC',              // 留まる — blue (defense)
+      '#AA66DD',              // スキル — purple (magic)
+      '#66BB66',              // アイテム — green (items)
+    ];
 
     for (let i = 0; i < 4; i++) {
       const col = i % 2;
@@ -959,16 +1220,24 @@ class BattleScene extends Scene {
       const bx = panelX + 10 + col * (btnW + gap);
       const by = panelY + 10 + row * (btnH + gap);
       const selected = (i === this.selectedCommand);
+      const accent = cmdAccents[i];
 
-      const bgColor = selected ? 'rgba(255,215,0,0.3)' : 'rgba(60,60,80,0.8)';
-      const borderColor = selected ? '#FFD700' : '#555';
-      renderer.drawRoundedRect(bx, by, btnW, btnH, 6, bgColor, borderColor);
+      if (selected) {
+        // Glow behind selected button
+        renderer.drawGlow(bx + btnW / 2, by + btnH / 2, btnW * 0.6, accent, 0.2);
+        renderer.drawRoundedRect(bx, by, btnW, btnH, 6, 'rgba(255,215,0,0.25)', '#FFD700');
+      } else {
+        renderer.drawRoundedRect(bx, by, btnW, btnH, 6, 'rgba(40,40,60,0.85)', 'rgba(80,80,100,0.6)');
+      }
 
-      renderer.drawText(this.commands[i].name, bx + btnW / 2, by + 6, {
+      // Colored accent bar on the left of button
+      renderer.drawRect(bx + 3, by + 6, 3, btnH - 12, accent);
+
+      renderer.drawText(this.commands[i].name, bx + btnW / 2 + 4, by + 6, {
         size: 16, align: 'center', color: selected ? '#FFD700' : '#DDD',
       });
-      renderer.drawText(`[${this.commands[i].key}]`, bx + btnW / 2, by + 26, {
-        size: 10, align: 'center', color: '#888',
+      renderer.drawText(`[${this.commands[i].key}]`, bx + btnW / 2 + 4, by + 27, {
+        size: 10, align: 'center', color: selected ? '#BBA030' : '#666',
       });
     }
 
@@ -978,19 +1247,24 @@ class BattleScene extends Scene {
       const ux = panelX + 230;
       const uy = panelY + 10;
       const uw = 190;
-      const uh = 42;
+      const uh = 44;
       const uColor = SEASON_COLORS[unitySeason].primary;
-      renderer.drawRoundedRect(ux, uy, uw, uh, 6, 'rgba(255,255,255,0.15)', uColor);
+      const pulse = 0.15 + 0.1 * Math.sin(Date.now() / 400);
+
+      renderer.drawGlow(ux + uw / 2, uy + uh / 2, uw * 0.5, uColor, pulse);
+      renderer.drawRoundedRect(ux, uy, uw, uh, 6, 'rgba(255,255,255,0.12)', uColor);
       renderer.drawText('四季の合一', ux + uw / 2, uy + 6, {
         size: 16, align: 'center', color: uColor,
       });
-      renderer.drawText(`[${SEASON_NAMES[unitySeason]}]`, ux + uw / 2, uy + 26, {
+      renderer.drawText(`[${SEASON_NAMES[unitySeason]}]`, ux + uw / 2, uy + 27, {
         size: 11, align: 'center', color: '#DDD',
       });
     }
 
-    // Command description
-    renderer.drawText(this.commands[this.selectedCommand].desc, panelX + panelW / 2, panelY + panelH - 14, {
+    // Command description at bottom
+    const descCmd = this.commands[this.selectedCommand];
+    renderer.drawRect(panelX + 10, panelY + panelH - 22, panelW - 20, 16, 'rgba(255,255,255,0.04)');
+    renderer.drawText(descCmd.desc, panelX + panelW / 2, panelY + panelH - 20, {
       size: 11, align: 'center', color: '#AAA',
     });
   }
@@ -1003,49 +1277,87 @@ class BattleScene extends Scene {
     const skills = unit.skills;
 
     const panelX = 510;
-    const panelY = 418;
+    const panelY = 404;
     const panelW = 440;
-    const panelH = Math.max(116, skills.length * 28 + 20);
+    const itemH = 30;
+    const headerH = 24;
+    const footerH = 28;
+    const panelH = Math.max(132, skills.length * itemH + headerH + footerH + 8);
 
-    renderer.drawRoundedRect(panelX, panelY, panelW, panelH, 8, 'rgba(0,0,0,0.85)', '#777');
-    renderer.drawText('スキル選択 [ESC:戻る]', panelX + 10, panelY + 4, { size: 11, color: '#888' });
+    renderer.drawRoundedRect(panelX, panelY, panelW, panelH, 10, 'rgba(10,10,30,0.92)', 'rgba(100,100,140,0.6)');
 
+    // Header
+    renderer.drawRect(panelX + 4, panelY + 2, panelW - 8, headerH, 'rgba(255,255,255,0.04)');
+    renderer.drawText('スキル選択', panelX + 14, panelY + 5, { size: 12, color: '#CCC' });
+    renderer.drawText('[ESC:戻る]', panelX + panelW - 14, panelY + 7, { size: 10, align: 'right', color: '#666' });
+
+    // Skill list
     for (let i = 0; i < skills.length; i++) {
       const s = skills[i];
-      const iy = panelY + 22 + i * 28;
+      const iy = panelY + headerH + 4 + i * itemH;
       const selected = (i === this.selectedSkill);
-
-      if (selected) {
-        renderer.drawRect(panelX + 4, iy - 2, panelW - 8, 26, 'rgba(255,215,0,0.2)');
-      }
-
+      const canUse = unit.mp >= (s.mpCost || 0);
       const sSeason = s.season || unit.currentSeason;
       const sColor = SEASON_COLORS[sSeason].primary;
-      renderer.drawRect(panelX + 12, iy + 6, 12, 12, sColor);
 
-      const canUse = unit.mp >= (s.mpCost || 0);
-      renderer.drawText(s.name, panelX + 32, iy + 4, {
-        size: 14, color: canUse ? (selected ? '#FFD700' : '#FFF') : '#666',
+      // Selection highlight
+      if (selected) {
+        renderer.drawRoundedRect(panelX + 4, iy - 1, panelW - 8, itemH - 2, 4, 'rgba(255,215,0,0.15)', 'rgba(255,215,0,0.35)');
+        // Selection indicator
+        renderer.drawText('\u25B6', panelX + 8, iy + 5, { size: 10, color: '#FFD700' });
+      }
+
+      // Season color dot (rounded)
+      if (canUse) {
+        renderer.drawGlow(panelX + 24, iy + 12, 8, sColor, 0.4);
+      }
+      renderer.drawRect(panelX + 18, iy + 6, 12, 12, canUse ? sColor : '#444');
+      renderer.drawRectOutline(panelX + 18, iy + 6, 12, 12, canUse ? '#FFF' : '#333', 1);
+
+      // Skill name
+      const nameColor = canUse ? (selected ? '#FFD700' : '#EEE') : '#555';
+      renderer.drawText(s.name, panelX + 38, iy + 4, { size: 14, color: nameColor });
+
+      // MP cost (right-aligned area)
+      const mpColor = canUse ? '#88BBFF' : '#444';
+      renderer.drawText(`MP:${s.mpCost || 0}`, panelX + 210, iy + 7, { size: 11, color: mpColor });
+
+      // Season name
+      renderer.drawText(SEASON_NAMES[sSeason], panelX + 270, iy + 7, {
+        size: 11, color: canUse ? sColor : '#444',
       });
 
-      renderer.drawText(`MP:${s.mpCost || 0}`, panelX + 200, iy + 6, {
-        size: 11, color: canUse ? '#88BBFF' : '#555',
-      });
-
-      renderer.drawText(SEASON_NAMES[sSeason], panelX + 260, iy + 6, {
-        size: 11, color: sColor,
-      });
-
+      // Power
       if (s.power) {
-        renderer.drawText(`威力:${s.power}`, panelX + 310, iy + 6, {
-          size: 11, color: '#AAA',
+        renderer.drawText(`威力:${s.power}`, panelX + 320, iy + 7, {
+          size: 11, color: canUse ? '#AAA' : '#444',
         });
       }
 
+      // Type label
       const typeLabel = s.type === 'heal' ? '回復' : s.type === 'magic' ? '魔法' : '物理';
-      renderer.drawText(typeLabel, panelX + 380, iy + 6, {
-        size: 11, color: '#999',
+      const typeColor = s.type === 'heal' ? '#66CC66' : s.type === 'magic' ? '#AA88DD' : '#CC8866';
+      renderer.drawText(typeLabel, panelX + 390, iy + 7, {
+        size: 11, color: canUse ? typeColor : '#444',
       });
+
+      // Grey-out overlay for unusable skills
+      if (!canUse) {
+        renderer.drawRect(panelX + 4, iy - 1, panelW - 8, itemH - 2, 'rgba(0,0,0,0.3)');
+      }
+    }
+
+    // Footer: selected skill description
+    const footerY = panelY + panelH - footerH;
+    renderer.drawRect(panelX + 4, footerY, panelW - 8, footerH - 4, 'rgba(255,255,255,0.03)');
+    const selSkill = skills[this.selectedSkill];
+    if (selSkill) {
+      const desc = selSkill.description || selSkill.desc || '';
+      if (desc) {
+        renderer.drawText(desc, panelX + panelW / 2, footerY + 6, {
+          size: 11, align: 'center', color: '#999',
+        });
+      }
     }
   }
 
@@ -1053,13 +1365,22 @@ class BattleScene extends Scene {
 
   _drawMessageBox(renderer, text) {
     if (!text) return;
-    const bx = 80;
-    const by = 360;
-    const bw = GAME_WIDTH - 160;
-    const bh = 44;
-    renderer.drawRoundedRect(bx, by, bw, bh, 8, 'rgba(0,0,0,0.85)', '#888');
-    renderer.drawText(text, GAME_WIDTH / 2, by + 12, {
-      size: 16, align: 'center', color: '#FFF',
+    const bx = 100;
+    const by = 350;
+    const bw = GAME_WIDTH - 200;
+    const bh = 50;
+
+    // Semi-transparent dark background with border
+    renderer.drawRoundedRect(bx, by, bw, bh, 10, 'rgba(5,5,20,0.88)', 'rgba(200,200,220,0.6)');
+
+    // Subtle inner glow at the edges
+    const seasonColor = SEASON_COLORS[this.background] || SEASON_COLORS[SEASON.SPRING];
+    renderer.drawRect(bx + 4, by + 2, bw - 8, 1, seasonColor.primary, 0.3);
+
+    // Message text
+    renderer.drawText(text, GAME_WIDTH / 2, by + 14, {
+      size: 17, align: 'center', color: '#FFF',
+      shadow: true, shadowColor: '#000',
     });
   }
 
@@ -1071,29 +1392,64 @@ class BattleScene extends Scene {
     const cx = GAME_WIDTH / 2;
     const cy = GAME_HEIGHT / 2;
 
-    renderer.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT, '#000', 0.6);
-    renderer.drawRoundedRect(cx - 180, cy - 80, 360, 160, 12, 'rgba(20,20,40,0.95)', '#888');
+    // Dark overlay
+    renderer.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT, '#000', 0.65);
 
     if (this.resultData.result === 'victory') {
-      renderer.drawText('勝利!', cx, cy - 55, {
-        size: 32, align: 'center', color: '#FFD700',
+      // Golden victory glow
+      const glowPulse = 0.2 + 0.1 * Math.sin(Date.now() / 500);
+      renderer.drawGlow(cx, cy - 30, 200, '#FFD700', glowPulse);
+      renderer.drawGlow(cx, cy - 30, 120, '#FFF8DC', glowPulse * 0.6);
+
+      // Result panel
+      renderer.drawRoundedRect(cx - 200, cy - 90, 400, 180, 14, 'rgba(15,15,35,0.92)', 'rgba(255,215,0,0.5)');
+
+      // Victory text with outline
+      renderer.drawText('勝利!', cx, cy - 70, {
+        size: 38, align: 'center', color: '#FFD700',
+        outline: true, outlineColor: '#000', outlineWidth: 4,
       });
-      renderer.drawText(`獲得EXP: ${this.resultData.exp}`, cx, cy - 10, {
-        size: 18, align: 'center', color: '#FFF',
+
+      // Decorative line
+      renderer.drawGradientRect(cx - 100, cy - 30, 200, 2, '#FFD700', 'rgba(255,215,0,0)');
+
+      // EXP display
+      renderer.drawText('獲得経験値', cx, cy - 15, {
+        size: 13, align: 'center', color: '#AAA',
       });
+      renderer.drawText(`${this.resultData.exp} EXP`, cx, cy + 5, {
+        size: 24, align: 'center', color: '#FFF',
+        outline: true, outlineColor: '#000', outlineWidth: 2,
+      });
+
+      // Sparkle particles (add a few each frame during result)
+      if (Math.random() < 0.15) {
+        renderer.addParticle(this.background, cx + (Math.random() - 0.5) * 300, cy + (Math.random() - 0.5) * 150);
+      }
     } else {
-      renderer.drawText('全滅...', cx, cy - 55, {
-        size: 32, align: 'center', color: '#E74C3C',
+      // Defeat: red glow
+      const defeatPulse = 0.15 + 0.08 * Math.sin(Date.now() / 600);
+      renderer.drawGlow(cx, cy - 20, 160, '#E74C3C', defeatPulse);
+
+      renderer.drawRoundedRect(cx - 200, cy - 90, 400, 180, 14, 'rgba(30,5,5,0.92)', 'rgba(200,50,50,0.5)');
+
+      renderer.drawText('全滅...', cx, cy - 65, {
+        size: 38, align: 'center', color: '#E74C3C',
+        outline: true, outlineColor: '#000', outlineWidth: 4,
       });
+
+      renderer.drawGradientRect(cx - 100, cy - 25, 200, 2, '#E74C3C', 'rgba(231,76,60,0)');
     }
 
+    // Continue prompt (blinking)
     if (this.resultTimer > 1.0) {
-      const blink = Math.sin(Date.now() / 300) > 0;
-      if (blink) {
-        renderer.drawText('決定キーで続ける', cx, cy + 40, {
-          size: 14, align: 'center', color: '#AAA',
-        });
-      }
+      const alpha = 0.4 + 0.4 * Math.abs(Math.sin(Date.now() / 400));
+      renderer.ctx.save();
+      renderer.ctx.globalAlpha = alpha;
+      renderer.drawText('Space / Enter で続ける', cx, cy + 55, {
+        size: 14, align: 'center', color: '#CCC',
+      });
+      renderer.ctx.restore();
     }
   }
 }
