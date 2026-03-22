@@ -747,6 +747,10 @@ class BattleScene extends Scene {
 
   draw(renderer) {
     renderer.ctx.globalAlpha = 1;
+    // Force disable fade during battle (prevent black screen)
+    renderer.fadeAlpha = 0;
+    renderer.fadeTarget = 0;
+
     if (this._error) {
       renderer.clear('#300');
       renderer.drawText('Battle Error: ' + this._error, 20, 20, {size: 16, color: '#F00'});
