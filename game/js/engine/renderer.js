@@ -235,8 +235,28 @@ class Renderer {
       size: 2 + Math.random() * 3,
       color: Math.random() > 0.5 ? colors.primary : colors.accent,
       season,
+      type: 'season',
       rotation: Math.random() * Math.PI * 2,
       rotSpeed: (Math.random() - 0.5) * 0.1,
+      flickerPhase: Math.random() * Math.PI * 2,
+    });
+  }
+
+  // Dust particle (for god ray interiors)
+  addDustParticle(x, y) {
+    if (this.particles.length >= 120) return;
+    this.particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 0.15,
+      vy: Math.random() * 0.1 + 0.05,
+      life: 90 + Math.random() * 90,
+      maxLife: 180,
+      size: 1 + Math.random() * 1.5,
+      color: '#FFFAE0',
+      season: null,
+      type: 'dust',
+      rotation: 0,
+      rotSpeed: 0,
       flickerPhase: Math.random() * Math.PI * 2,
     });
   }
@@ -248,6 +268,14 @@ class Renderer {
       p.y += p.vy;
       p.life--;
       p.rotation += p.rotSpeed;
+
+      // Dust particle behavior
+      if (p.type === 'dust') {
+        p.vx += Math.sin(Date.now() / 1500 + p.x * 0.5) * 0.005;
+        p.vy += 0.002;
+        p.vy = Math.min(p.vy, 0.3);
+        continue;
+      }
 
       // Season-specific behavior
       if (p.season === SEASON.SPRING) {
@@ -275,6 +303,23 @@ class Renderer {
       const alpha = Math.min(1, p.life / 30);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = p.color;
+
+      // Dust particle: flickering tiny dot
+      if (p.type === 'dust') {
+        const flicker = 0.3 + 0.7 * Math.abs(Math.sin(Date.now() / 200 + p.flickerPhase));
+        ctx.globalAlpha = alpha * flicker;
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        // Tiny glow around dust
+        ctx.globalAlpha = alpha * flicker * 0.3;
+        ctx.fillStyle = '#FFFAE0';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
 
       if (p.season === SEASON.SPRING) {
         // Cherry blossom petal — rotated ellipse with 5-petal hint

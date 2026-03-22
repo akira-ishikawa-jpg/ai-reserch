@@ -851,6 +851,12 @@ class ExplorationScene extends Scene {
     // 8. プレイヤー描画
     this.drawPlayer(renderer);
 
+    // 8b. 霧レイヤー（タイルマップ・キャラの上にオーバーレイ）
+    this._drawFog(renderer);
+
+    // 8c. ゴッドレイ（ダンジョンのみ — 天井の穴から差し込む光）
+    this._drawGodRays(renderer);
+
     // 9. ミニマップ
     this.drawMinimap(renderer, map);
 
@@ -1180,26 +1186,43 @@ class ExplorationScene extends Scene {
   _drawDistantBackground(renderer, map) {
     const ctx = renderer.ctx;
     const isDungeon = map.id && map.id.startsWith('sennen');
+    const camX = this.camera.x;
 
     if (isDungeon) {
-      // Dark rocky cave atmosphere: stalactite silhouettes at top
-      ctx.fillStyle = 'rgba(20,10,5,0.08)';
-      // Top dark gradient overlay
+      // === ダンジョン: 暗い洞窟大気 ===
+
+      // Top dark gradient overlay (fixed sky layer, parallax=0)
       const darkGrad = ctx.createLinearGradient(0, 0, 0, 120);
       darkGrad.addColorStop(0, 'rgba(15,8,3,0.15)');
       darkGrad.addColorStop(1, 'rgba(15,8,3,0)');
       ctx.fillStyle = darkGrad;
       ctx.fillRect(0, 0, GAME_WIDTH, 120);
 
-      // Stalactite silhouettes
-      ctx.fillStyle = 'rgba(30,15,8,0.07)';
+      // 遠景レイヤー (parallax=0.1): 鍾乳石の大きなシルエット — 大気遠近法で30%灰色化
+      ctx.fillStyle = 'rgba(80,70,65,0.07)';
       for (let i = 0; i < 8; i++) {
-        const bx = i * 130 + 20;
+        const baseX = i * 130 + 20;
+        const bx = baseX - camX * 0.1;
         const bh = 30 + (i * 37 % 40);
         ctx.beginPath();
         ctx.moveTo(bx, 0);
         ctx.lineTo(bx + 15, bh);
         ctx.lineTo(bx + 30, 0);
+        ctx.fill();
+      }
+
+      // 中景レイヤー (parallax=0.3): 岩壁のシルエット — 15%灰色化
+      ctx.fillStyle = 'rgba(50,35,25,0.09)';
+      for (let i = 0; i < 6; i++) {
+        const baseX = i * 180 + 40;
+        const bx = baseX - camX * 0.3;
+        const bh = 20 + (i * 53 % 35);
+        ctx.beginPath();
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx + 10, bh);
+        ctx.lineTo(bx + 20, bh - 5);
+        ctx.lineTo(bx + 35, bh + 10);
+        ctx.lineTo(bx + 50, 0);
         ctx.fill();
       }
 
@@ -1210,9 +1233,53 @@ class ExplorationScene extends Scene {
       ctx.fillStyle = bottomGrad;
       ctx.fillRect(0, GAME_HEIGHT - 80, GAME_WIDTH, 80);
     } else {
-      // Town: cherry blossom tree silhouettes in distance
-      ctx.fillStyle = 'rgba(200,100,130,0.04)';
-      // Draw 3 tree silhouettes
+      // === 町: パララックス背景 ===
+
+      // 最奥レイヤー (parallax=0): 空のグラデーションは既にdraw()で描画済み
+
+      // 遠景レイヤー (parallax=0.1): 山のシルエット — 大気遠近法で30%灰色化
+      const mountainColor = 'rgba(170,160,175,0.12)';
+      ctx.fillStyle = mountainColor;
+      ctx.beginPath();
+      ctx.moveTo(0, 100);
+      const mountainPoints = [
+        { x: 0, y: 100 }, { x: 80, y: 55 }, { x: 180, y: 70 },
+        { x: 300, y: 35 }, { x: 420, y: 60 }, { x: 520, y: 40 },
+        { x: 650, y: 65 }, { x: 780, y: 45 }, { x: 900, y: 58 },
+        { x: 1000, y: 50 }, { x: 1100, y: 100 },
+      ];
+      for (const pt of mountainPoints) {
+        const screenX = pt.x - camX * 0.1;
+        ctx.lineTo(screenX, pt.y);
+      }
+      ctx.lineTo(GAME_WIDTH + 200, 100);
+      ctx.lineTo(GAME_WIDTH + 200, 120);
+      ctx.lineTo(-200, 120);
+      ctx.closePath();
+      ctx.fill();
+
+      // 中景レイヤー (parallax=0.3): 森/建物のシルエット — 15%灰色化
+      const forestColor = 'rgba(140,120,130,0.08)';
+      ctx.fillStyle = forestColor;
+      ctx.beginPath();
+      const forestPoints = [
+        { x: 0, y: 110 }, { x: 60, y: 85 }, { x: 120, y: 90 },
+        { x: 200, y: 75 }, { x: 280, y: 88 }, { x: 350, y: 78 },
+        { x: 450, y: 82 }, { x: 550, y: 72 }, { x: 650, y: 80 },
+        { x: 750, y: 70 }, { x: 850, y: 85 }, { x: 950, y: 78 },
+        { x: 1050, y: 110 },
+      ];
+      for (const pt of forestPoints) {
+        const screenX = pt.x - camX * 0.3;
+        ctx.lineTo(screenX, pt.y);
+      }
+      ctx.lineTo(GAME_WIDTH + 200, 110);
+      ctx.lineTo(GAME_WIDTH + 200, 130);
+      ctx.lineTo(-200, 130);
+      ctx.closePath();
+      ctx.fill();
+
+      // 桜の木シルエット（中景上に、parallax=0.3）
       const trees = [
         { x: 80, trunkH: 70, canopyR: 45 },
         { x: 700, trunkH: 60, canopyR: 40 },
@@ -1220,20 +1287,142 @@ class ExplorationScene extends Scene {
       ];
       for (const t of trees) {
         const baseY = 40;
-        // Trunk
-        ctx.fillStyle = 'rgba(100,60,40,0.05)';
-        ctx.fillRect(t.x - 3, baseY, 6, t.trunkH);
-        // Canopy (soft circle)
-        const canopyGrad = ctx.createRadialGradient(t.x, baseY, 0, t.x, baseY, t.canopyR);
-        canopyGrad.addColorStop(0, 'rgba(255,183,197,0.06)');
-        canopyGrad.addColorStop(0.7, 'rgba(255,150,180,0.03)');
-        canopyGrad.addColorStop(1, 'rgba(255,150,180,0)');
+        const screenX = t.x - camX * 0.3;
+        // Trunk — 15%灰色化 applied
+        ctx.fillStyle = 'rgba(120,90,75,0.05)';
+        ctx.fillRect(screenX - 3, baseY, 6, t.trunkH);
+        // Canopy (soft circle) — desaturated slightly
+        const canopyGrad = ctx.createRadialGradient(screenX, baseY, 0, screenX, baseY, t.canopyR);
+        canopyGrad.addColorStop(0, 'rgba(230,175,190,0.06)');
+        canopyGrad.addColorStop(0.7, 'rgba(215,150,170,0.03)');
+        canopyGrad.addColorStop(1, 'rgba(215,150,170,0)');
         ctx.fillStyle = canopyGrad;
         ctx.beginPath();
-        ctx.arc(t.x, baseY, t.canopyR, 0, Math.PI * 2);
+        ctx.arc(screenX, baseY, t.canopyR, 0, Math.PI * 2);
         ctx.fill();
       }
     }
+  }
+
+  // ==========================================
+  // 霧レイヤー描画 (Phase 3.2)
+  // ==========================================
+
+  _drawFog(renderer) {
+    if (!this.currentMap) return;
+    const ctx = renderer.ctx;
+    const mapId = this.currentMap.id;
+    const now = Date.now();
+
+    // エリアに応じた霧の設定
+    let fogColor, fogAlphaMin, fogAlphaMax, fogSpeed, fogVerticalAmp;
+    if (mapId === 'kasumikari') {
+      fogColor = [255, 240, 245];
+      fogAlphaMin = 0.03;
+      fogAlphaMax = 0.06;
+      fogSpeed = 0.008;       // 左から右にゆっくり移動
+      fogVerticalAmp = 3;
+    } else if (mapId === 'sennen_entrance') {
+      fogColor = [180, 160, 200];
+      fogAlphaMin = 0.06;
+      fogAlphaMax = 0.10;
+      fogSpeed = 0.005;       // ゆっくり浮遊
+      fogVerticalAmp = 5;
+    } else if (mapId && mapId.startsWith('sennen')) {
+      fogColor = [160, 140, 180];
+      fogAlphaMin = 0.10;
+      fogAlphaMax = 0.15;
+      fogSpeed = 0.006;       // 濃い霧がゆっくり移動
+      fogVerticalAmp = 4;
+    } else {
+      return; // 霧なしエリア
+    }
+
+    ctx.save();
+
+    // 霧の帯を2本、異なる速度でスクロール
+    const fogBands = [
+      { speedMul: 1.0, yBase: GAME_HEIGHT * 0.3, height: GAME_HEIGHT * 0.4, alphaOffset: 0 },
+      { speedMul: 0.6, yBase: GAME_HEIGHT * 0.55, height: GAME_HEIGHT * 0.35, alphaOffset: Math.PI * 0.7 },
+    ];
+
+    for (const band of fogBands) {
+      // 横スクロールオフセット
+      const scrollX = (now * fogSpeed * band.speedMul) % (GAME_WIDTH * 2);
+      // sin波で上下に微動
+      const verticalOffset = Math.sin(now * 0.0008 * band.speedMul + band.alphaOffset) * fogVerticalAmp;
+      // alpha変動
+      const alphaT = 0.5 + 0.5 * Math.sin(now * 0.001 + band.alphaOffset);
+      const alpha = fogAlphaMin + (fogAlphaMax - fogAlphaMin) * alphaT;
+
+      // グラデーション帯の描画
+      const grad = ctx.createLinearGradient(0, band.yBase + verticalOffset, 0, band.yBase + band.height + verticalOffset);
+      grad.addColorStop(0, `rgba(${fogColor[0]},${fogColor[1]},${fogColor[2]},0)`);
+      grad.addColorStop(0.3, `rgba(${fogColor[0]},${fogColor[1]},${fogColor[2]},${alpha})`);
+      grad.addColorStop(0.7, `rgba(${fogColor[0]},${fogColor[1]},${fogColor[2]},${alpha * 0.8})`);
+      grad.addColorStop(1, `rgba(${fogColor[0]},${fogColor[1]},${fogColor[2]},0)`);
+      ctx.fillStyle = grad;
+
+      // 画面幅より広い帯を2枚並べてシームレススクロール
+      ctx.fillRect(-scrollX, band.yBase + verticalOffset, GAME_WIDTH * 2, band.height);
+      ctx.fillRect(GAME_WIDTH * 2 - scrollX, band.yBase + verticalOffset, GAME_WIDTH * 2, band.height);
+    }
+
+    ctx.restore();
+  }
+
+  // ==========================================
+  // ゴッドレイ描画 (Phase 3.3) — ダンジョンのみ
+  // ==========================================
+
+  _drawGodRays(renderer) {
+    if (!this.currentMap) return;
+    const mapId = this.currentMap.id;
+    if (!mapId || !mapId.startsWith('sennen')) return;
+
+    const ctx = renderer.ctx;
+    const now = Date.now();
+
+    // 光の筋を3本配置
+    const rays = [
+      { x: GAME_WIDTH * 0.2, width: 48 },
+      { x: GAME_WIDTH * 0.55, width: 38 },
+      { x: GAME_WIDTH * 0.8, width: 56 },
+    ];
+
+    ctx.save();
+
+    const angleRad = 25 * Math.PI / 180; // 25度
+
+    for (let i = 0; i < rays.length; i++) {
+      const ray = rays[i];
+      // sin波で明滅
+      const brightness = 0.08 + 0.04 * Math.sin(now * 0.0015 + i * 2.1);
+
+      ctx.save();
+      ctx.translate(ray.x, 0);
+      ctx.rotate(angleRad);
+
+      // 光の筋のグラデーション（上から下へフェード）
+      const grad = ctx.createLinearGradient(0, -50, 0, GAME_HEIGHT + 50);
+      grad.addColorStop(0, `rgba(255,240,220,${brightness * 0.3})`);
+      grad.addColorStop(0.2, `rgba(255,240,220,${brightness})`);
+      grad.addColorStop(0.6, `rgba(255,240,220,${brightness * 0.7})`);
+      grad.addColorStop(1, `rgba(255,240,220,0)`);
+      ctx.fillStyle = grad;
+      ctx.fillRect(-ray.width / 2, -50, ray.width, GAME_HEIGHT + 100);
+
+      ctx.restore();
+
+      // ゴッドレイ内にホコリパーティクルを生成（フレームごとに低確率）
+      if (Math.random() < 0.03) {
+        const dustX = ray.x + (Math.random() - 0.5) * ray.width;
+        const dustY = Math.random() * GAME_HEIGHT * 0.7;
+        renderer.addDustParticle(dustX, dustY);
+      }
+    }
+
+    ctx.restore();
   }
 
   drawSavePoints(renderer, map) {
