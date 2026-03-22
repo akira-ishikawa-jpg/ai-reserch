@@ -95,6 +95,10 @@ class BattleScene extends Scene {
     this.resultData = null;
     this._afterMessage = null;
 
+    // フェードイン（探索シーンがフェードアウトしているので戻す）
+    this.game.renderer.fadeAlpha = 1;
+    this.game.renderer.startFade(0, 0.05);
+
     // BGM: バトル曲開始
     if (this.game.audio && this.game.audio.ctx) {
       const bgmId = (data.isBoss) ? 'boss' : 'battle';
