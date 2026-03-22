@@ -70,6 +70,7 @@
   <button onclick="generateEnemies()">敵のみ</button>
   <button onclick="generateTiles()">タイルのみ</button>
   <button class="success" onclick="downloadAll()">全てダウンロード</button>
+  <button class="success" onclick="exportAssetsDataJS()">assets_data.js エクスポート</button>
 </div>
 
 <div id="status" class="status"></div>
@@ -823,6 +824,80 @@ function downloadAll() {
     }
   }
   setTimeout(() => log('--- 全ダウンロード完了。ファイルを assets/sprites/ と assets/tiles/ に配置してください ---'), i * 300 + 100);
+}
+
+// ==========================================
+// assets_data.js エクスポート
+// 生成した全スプライトを data URL として JS ファイルに出力
+// これにより画像ファイルなしでゲーム内で使える
+// ==========================================
+function exportAssetsDataJS() {
+  const entries = Object.entries(generatedCanvases);
+  if (entries.length === 0) {
+    log('まず「全アセット生成」を実行してください', 'warn');
+    return;
+  }
+
+  log('--- assets_data.js 生成開始 ---');
+
+  // メタ情報マッピング
+  const metaMap = {
+    'hero':          { type: 'char',  frameW: 32, frameH: 48, cols: 3, rows: 4 },
+    'tsumugi':       { type: 'char',  frameW: 32, frameH: 48, cols: 3, rows: 4 },
+    'npc_guild':     { type: 'char',  frameW: 32, frameH: 48, cols: 3, rows: 4 },
+    'npc_inn':       { type: 'char',  frameW: 32, frameH: 48, cols: 3, rows: 4 },
+    'npc_merchant':  { type: 'char',  frameW: 32, frameH: 48, cols: 3, rows: 4 },
+    'enemy_fairy':   { type: 'enemy', frameW: 64, frameH: 64, cols: 2, rows: 1 },
+    'enemy_bee':     { type: 'enemy', frameW: 64, frameH: 64, cols: 2, rows: 1 },
+    'enemy_fox':     { type: 'enemy', frameW: 64, frameH: 64, cols: 2, rows: 1 },
+    'boss_hanamori': { type: 'boss',  frameW: 128, frameH: 128, cols: 2, rows: 1 },
+    'spring_tiles':  { type: 'tile',  frameW: 32, frameH: 32, cols: 13, rows: 1 },
+  };
+
+  let js = '// ============================================================\n';
+  js += '// assets_data.js \u2014 \u81ea\u52d5\u751f\u6210\u3055\u308c\u305f\u30b9\u30d7\u30e9\u30a4\u30c8\u30a2\u30bb\u30c3\u30c8 (data URL)\n';
+  js += '// generate_browser.html \u3067\u751f\u6210\u3002\u753b\u50cf\u30d5\u30a1\u30a4\u30eb\u4e0d\u8981\u3067\u30b2\u30fc\u30e0\u5185\u3067\u4f7f\u3048\u308b\n';
+  js += '// ============================================================\n\n';
+  js += 'const EMBEDDED_SPRITE_DATA = {};\n\n';
+  js += '(function loadEmbeddedSprites() {\n';
+
+  for (const [id, canvas] of entries) {
+    const dataUrl = canvas.toDataURL('image/png');
+    const meta = metaMap[id] || { type: 'unknown', frameW: 32, frameH: 32, cols: 1, rows: 1 };
+    js += `  // ${id} (${canvas.width}x${canvas.height})\n`;
+    js += `  EMBEDDED_SPRITE_DATA['${id}'] = {\n`;
+    js += `    dataUrl: '${dataUrl}',\n`;
+    js += `    type: '${meta.type}',\n`;
+    js += `    frameW: ${meta.frameW},\n`;
+    js += `    frameH: ${meta.frameH},\n`;
+    js += `    cols: ${meta.cols},\n`;
+    js += `    rows: ${meta.rows},\n`;
+    js += `  };\n\n`;
+  }
+
+  js += '  // SpriteLoader \u304c\u3042\u308c\u3070\u3001\u57cb\u3081\u8fbc\u307f\u30c7\u30fc\u30bf\u3067\u4e0a\u66f8\u304d\u767b\u9332\n';
+  js += '  if (typeof SPRITE_LOADER !== "undefined") {\n';
+  js += '    for (const [id, data] of Object.entries(EMBEDDED_SPRITE_DATA)) {\n';
+  js += '      const img = new Image();\n';
+  js += '      img.src = data.dataUrl;\n';
+  js += '      img.onload = () => {\n';
+  js += '        SPRITE_LOADER.images[id] = img;\n';
+  js += '        SPRITE_LOADER.loadCount++;\n';
+  js += '      };\n';
+  js += '    }\n';
+  js += '  }\n';
+  js += '})();\n';
+
+  // Blob としてダウンロード
+  const blob = new Blob([js], { type: 'application/javascript' });
+  const a = document.createElement('a');
+  a.download = 'assets_data.js';
+  a.href = URL.createObjectURL(blob);
+  a.click();
+  URL.revokeObjectURL(a.href);
+
+  log(`assets_data.js (${(js.length / 1024).toFixed(1)} KB) をエクスポートしました`, 'ok');
+  log('使い方: index.html の sprite_loader.js の後に &lt;script src="js/data/assets_data.js"&gt;&lt;/script&gt; を追加', 'ok');
 }
 
 // 起動時に自動生成

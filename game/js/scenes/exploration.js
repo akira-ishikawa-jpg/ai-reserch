@@ -826,6 +826,9 @@ class ExplorationScene extends Scene {
     renderer.ctx.globalAlpha = 1;
     renderer.drawGradientRect(0, 0, GAME_WIDTH, GAME_HEIGHT, seasonColors.bg, seasonColors.secondary);
 
+    // 1b. Distant seasonal silhouettes
+    this._drawDistantBackground(renderer, map);
+
     // 2. パーティクル（背景レイヤー）
     renderer.updateParticles();
     renderer.drawParticles();
@@ -898,99 +901,153 @@ class ExplorationScene extends Scene {
     const startTileY = Math.max(0, Math.floor(this.camera.y / TILE_SIZE));
     const endTileX = Math.min(map.width, Math.ceil((this.camera.x + GAME_WIDTH) / TILE_SIZE) + 1);
     const endTileY = Math.min(map.height, Math.ceil((this.camera.y + GAME_HEIGHT) / TILE_SIZE) + 1);
+    const now = Date.now();
 
     for (let ty = startTileY; ty < endTileY; ty++) {
       for (let tx = startTileX; tx < endTileX; tx++) {
         const tile = map.tiles[ty][tx];
-        const screenX = tx * TILE_SIZE - this.camera.x;
-        const screenY = ty * TILE_SIZE - this.camera.y;
+        const sx = Math.floor(tx * TILE_SIZE - this.camera.x);
+        const sy = Math.floor(ty * TILE_SIZE - this.camera.y);
         const deco = this.tileDecorations && this.tileDecorations[ty] ? this.tileDecorations[ty][tx] : null;
 
         if (tile === TILE.FLOOR || tile === TILE.EMPTY || tile === TILE.ENTRANCE || tile === TILE.DOOR) {
-          // Checker pattern floor
+          // --- Floor tile ---
           const baseColor = colors[tile] || '#CCC';
           ctx.fillStyle = baseColor;
-          ctx.fillRect(Math.floor(screenX), Math.floor(screenY), TILE_SIZE, TILE_SIZE);
+          ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
 
-          // Subtle checker
+          // Subtle checker shade
           if (deco && deco.checkerOffset === 1) {
             ctx.fillStyle = 'rgba(0,0,0,0.04)';
-            ctx.fillRect(Math.floor(screenX), Math.floor(screenY), TILE_SIZE, TILE_SIZE);
+            ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
           }
 
-          // Random decorative dots
+          // Stone joint lines (thin grid within tile)
+          ctx.fillStyle = 'rgba(0,0,0,0.06)';
+          ctx.fillRect(sx, sy + TILE_SIZE / 2, TILE_SIZE, 1);               // horizontal joint
+          ctx.fillRect(sx + TILE_SIZE / 2 + (deco && deco.checkerOffset ? 8 : 0), sy, 1, TILE_SIZE); // vertical joint offset per row
+
+          // Random decorative pebbles
           if (deco && deco.hasDot) {
             ctx.fillStyle = 'rgba(0,0,0,0.06)';
             ctx.beginPath();
-            ctx.arc(screenX + deco.dotX, screenY + deco.dotY, deco.dotSize, 0, Math.PI * 2);
+            ctx.arc(sx + deco.dotX, sy + deco.dotY, deco.dotSize, 0, Math.PI * 2);
             ctx.fill();
           }
 
-          // Entrance shimmer
+          // Entrance / exit: light pillar effect
           if (tile === TILE.ENTRANCE) {
-            const shimmer = 0.1 + 0.08 * Math.sin(Date.now() / 400 + tx);
+            const shimmer = 0.1 + 0.08 * Math.sin(now / 400 + tx);
             ctx.fillStyle = `rgba(255,215,0,${shimmer})`;
-            ctx.fillRect(Math.floor(screenX), Math.floor(screenY), TILE_SIZE, TILE_SIZE);
+            ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
+            // Vertical light pillar
+            const pillarAlpha = 0.12 + 0.08 * Math.sin(now / 500 + tx * 1.3);
+            const pillarGrad = ctx.createLinearGradient(sx + TILE_SIZE / 2, sy - 40, sx + TILE_SIZE / 2, sy + TILE_SIZE);
+            pillarGrad.addColorStop(0, `rgba(255,245,200,0)`);
+            pillarGrad.addColorStop(0.3, `rgba(255,235,150,${pillarAlpha})`);
+            pillarGrad.addColorStop(1, `rgba(255,215,0,0)`);
+            ctx.fillStyle = pillarGrad;
+            ctx.fillRect(sx + 4, sy - 40, TILE_SIZE - 8, TILE_SIZE + 40);
           }
 
         } else if (tile === TILE.WALL) {
-          // Wall with gradient (pseudo 3D)
+          // --- Wall tile ---
           const wallBase = colors[tile] || '#888';
-          renderer.drawGradientRect(screenX, screenY, TILE_SIZE, TILE_SIZE,
+          renderer.drawGradientRect(sx, sy, TILE_SIZE, TILE_SIZE,
             this._lightenColor(wallBase, 30), this._darkenColor(wallBase, 20));
 
-          // Top edge highlight
-          ctx.fillStyle = 'rgba(255,255,255,0.2)';
-          ctx.fillRect(Math.floor(screenX), Math.floor(screenY), TILE_SIZE, 2);
+          // Strong top-face highlight (3D feel)
+          ctx.fillStyle = 'rgba(255,255,255,0.25)';
+          ctx.fillRect(sx, sy, TILE_SIZE, 3);
           // Left edge highlight
-          ctx.fillStyle = 'rgba(255,255,255,0.1)';
-          ctx.fillRect(Math.floor(screenX), Math.floor(screenY), 2, TILE_SIZE);
+          ctx.fillStyle = 'rgba(255,255,255,0.12)';
+          ctx.fillRect(sx, sy, 2, TILE_SIZE);
           // Bottom shadow
-          ctx.fillStyle = 'rgba(0,0,0,0.25)';
-          ctx.fillRect(Math.floor(screenX), Math.floor(screenY + TILE_SIZE - 2), TILE_SIZE, 2);
+          ctx.fillStyle = 'rgba(0,0,0,0.3)';
+          ctx.fillRect(sx, sy + TILE_SIZE - 2, TILE_SIZE, 2);
           // Right shadow
-          ctx.fillStyle = 'rgba(0,0,0,0.15)';
-          ctx.fillRect(Math.floor(screenX + TILE_SIZE - 2), Math.floor(screenY), 2, TILE_SIZE);
+          ctx.fillStyle = 'rgba(0,0,0,0.18)';
+          ctx.fillRect(sx + TILE_SIZE - 2, sy, 2, TILE_SIZE);
 
-          // Stone texture variation
-          if (deco && deco.stoneVariant < 2) {
-            ctx.fillStyle = 'rgba(0,0,0,0.05)';
-            ctx.fillRect(Math.floor(screenX + 4), Math.floor(screenY + TILE_SIZE / 2 - 1), TILE_SIZE - 8, 1);
+          // Stone texture: random color splotches
+          if (deco) {
+            const seed = deco.stoneVariant;
+            // Horizontal mortar line
+            if (seed < 3) {
+              ctx.fillStyle = 'rgba(0,0,0,0.07)';
+              ctx.fillRect(sx + 3, sy + TILE_SIZE / 2 - 1, TILE_SIZE - 6, 1);
+            }
+            // Vertical mortar line (offset for brick pattern)
+            if (seed < 2) {
+              const off = deco.checkerOffset ? TILE_SIZE * 0.6 : TILE_SIZE * 0.3;
+              ctx.fillStyle = 'rgba(0,0,0,0.06)';
+              ctx.fillRect(sx + off, sy + 2, 1, TILE_SIZE / 2 - 3);
+            }
+            // Small color variation patches
+            if (deco.hasDot) {
+              ctx.fillStyle = seed % 2 === 0 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+              ctx.fillRect(sx + deco.dotX - 2, sy + deco.dotY - 2, 6, 5);
+            }
           }
 
         } else if (tile === TILE.WATER) {
-          // Water with wave animation
+          // --- Water tile ---
           const waterBase = colors[tile] || '#4488CC';
           ctx.fillStyle = waterBase;
-          ctx.fillRect(Math.floor(screenX), Math.floor(screenY), TILE_SIZE, TILE_SIZE);
+          ctx.fillRect(sx, sy, TILE_SIZE, TILE_SIZE);
 
-          // Animated waves
-          const now = Date.now();
-          for (let wy = 0; wy < TILE_SIZE; wy += 6) {
-            const waveOffset = Math.sin(now / 600 + tx * 0.7 + ty * 0.5 + wy * 0.2) * 2;
-            const waveAlpha = 0.08 + 0.06 * Math.sin(now / 800 + wy * 0.3);
+          // Multiple layered wave lines
+          for (let wy = 0; wy < TILE_SIZE; wy += 5) {
+            const waveOffset = Math.sin(now / 600 + tx * 0.7 + ty * 0.5 + wy * 0.2) * 2.5;
+            const waveAlpha = 0.07 + 0.06 * Math.sin(now / 800 + wy * 0.3);
             ctx.fillStyle = `rgba(255,255,255,${waveAlpha})`;
-            ctx.fillRect(Math.floor(screenX + waveOffset), Math.floor(screenY + wy), TILE_SIZE, 3);
+            ctx.fillRect(Math.floor(sx + waveOffset), sy + wy, TILE_SIZE, 2);
           }
 
-          // Specular highlight
-          const specular = 0.15 + 0.1 * Math.sin(now / 1000 + tx * 0.4);
-          ctx.fillStyle = `rgba(255,255,255,${specular})`;
+          // Secondary wave layer (slower, shifted)
+          for (let wy = 2; wy < TILE_SIZE; wy += 8) {
+            const waveOffset2 = Math.sin(now / 900 + tx * 0.5 + ty * 0.8 + wy * 0.15) * 3;
+            ctx.fillStyle = 'rgba(200,230,255,0.06)';
+            ctx.fillRect(Math.floor(sx + waveOffset2 + 3), sy + wy, TILE_SIZE * 0.6, 2);
+          }
+
+          // Moving specular highlights (multiple small ones)
+          const specX1 = sx + TILE_SIZE * (0.3 + 0.15 * Math.sin(now / 1200 + tx * 0.6));
+          const specY1 = sy + TILE_SIZE * (0.25 + 0.1 * Math.sin(now / 1500 + ty * 0.4));
+          const specA1 = 0.18 + 0.12 * Math.sin(now / 1000 + tx * 0.4);
+          ctx.fillStyle = `rgba(255,255,255,${specA1})`;
           ctx.beginPath();
-          ctx.ellipse(screenX + TILE_SIZE / 2, screenY + TILE_SIZE / 3,
-            TILE_SIZE * 0.3, TILE_SIZE * 0.15, 0, 0, Math.PI * 2);
+          ctx.ellipse(specX1, specY1, TILE_SIZE * 0.2, TILE_SIZE * 0.1, 0, 0, Math.PI * 2);
           ctx.fill();
+
+          const specX2 = sx + TILE_SIZE * (0.7 + 0.1 * Math.sin(now / 1400 + tx * 0.3 + 2));
+          const specY2 = sy + TILE_SIZE * (0.65 + 0.08 * Math.sin(now / 1100 + ty * 0.5 + 1));
+          const specA2 = 0.1 + 0.08 * Math.sin(now / 900 + tx * 0.7 + 3);
+          ctx.fillStyle = `rgba(255,255,255,${specA2})`;
+          ctx.beginPath();
+          ctx.ellipse(specX2, specY2, TILE_SIZE * 0.12, TILE_SIZE * 0.06, 0.3, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Ripple circle
+          const ripplePhase = (now / 2000 + tx * 0.3 + ty * 0.7) % 1;
+          const rippleR = ripplePhase * TILE_SIZE * 0.4;
+          const rippleA = (1 - ripplePhase) * 0.12;
+          ctx.strokeStyle = `rgba(255,255,255,${rippleA})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.arc(sx + TILE_SIZE / 2, sy + TILE_SIZE / 2, rippleR, 0, Math.PI * 2);
+          ctx.stroke();
 
         } else {
           // Default tile
           const color = colors[tile] || '#333';
-          renderer.drawRect(screenX, screenY, TILE_SIZE, TILE_SIZE, color);
+          renderer.drawRect(sx, sy, TILE_SIZE, TILE_SIZE, color);
         }
 
-        // Subtle grid lines
+        // Subtle grid lines (stone joint feel)
         ctx.fillStyle = 'rgba(0,0,0,0.05)';
-        ctx.fillRect(Math.floor(screenX), Math.floor(screenY), TILE_SIZE, 1);
-        ctx.fillRect(Math.floor(screenX), Math.floor(screenY), 1, TILE_SIZE);
+        ctx.fillRect(sx, sy, TILE_SIZE, 1);
+        ctx.fillRect(sx, sy, 1, TILE_SIZE);
       }
     }
   }
@@ -1010,21 +1067,93 @@ class ExplorationScene extends Scene {
     return [parseInt(h.substring(0, 2), 16), parseInt(h.substring(2, 4), 16), parseInt(h.substring(4, 6), 16)];
   }
 
+  _drawDistantBackground(renderer, map) {
+    const ctx = renderer.ctx;
+    const isDungeon = map.id && map.id.startsWith('sennen');
+
+    if (isDungeon) {
+      // Dark rocky cave atmosphere: stalactite silhouettes at top
+      ctx.fillStyle = 'rgba(20,10,5,0.08)';
+      // Top dark gradient overlay
+      const darkGrad = ctx.createLinearGradient(0, 0, 0, 120);
+      darkGrad.addColorStop(0, 'rgba(15,8,3,0.15)');
+      darkGrad.addColorStop(1, 'rgba(15,8,3,0)');
+      ctx.fillStyle = darkGrad;
+      ctx.fillRect(0, 0, GAME_WIDTH, 120);
+
+      // Stalactite silhouettes
+      ctx.fillStyle = 'rgba(30,15,8,0.07)';
+      for (let i = 0; i < 8; i++) {
+        const bx = i * 130 + 20;
+        const bh = 30 + (i * 37 % 40);
+        ctx.beginPath();
+        ctx.moveTo(bx, 0);
+        ctx.lineTo(bx + 15, bh);
+        ctx.lineTo(bx + 30, 0);
+        ctx.fill();
+      }
+
+      // Bottom dark gradient
+      const bottomGrad = ctx.createLinearGradient(0, GAME_HEIGHT - 80, 0, GAME_HEIGHT);
+      bottomGrad.addColorStop(0, 'rgba(15,8,3,0)');
+      bottomGrad.addColorStop(1, 'rgba(15,8,3,0.1)');
+      ctx.fillStyle = bottomGrad;
+      ctx.fillRect(0, GAME_HEIGHT - 80, GAME_WIDTH, 80);
+    } else {
+      // Town: cherry blossom tree silhouettes in distance
+      ctx.fillStyle = 'rgba(200,100,130,0.04)';
+      // Draw 3 tree silhouettes
+      const trees = [
+        { x: 80, trunkH: 70, canopyR: 45 },
+        { x: 700, trunkH: 60, canopyR: 40 },
+        { x: 880, trunkH: 55, canopyR: 35 },
+      ];
+      for (const t of trees) {
+        const baseY = 40;
+        // Trunk
+        ctx.fillStyle = 'rgba(100,60,40,0.05)';
+        ctx.fillRect(t.x - 3, baseY, 6, t.trunkH);
+        // Canopy (soft circle)
+        const canopyGrad = ctx.createRadialGradient(t.x, baseY, 0, t.x, baseY, t.canopyR);
+        canopyGrad.addColorStop(0, 'rgba(255,183,197,0.06)');
+        canopyGrad.addColorStop(0.7, 'rgba(255,150,180,0.03)');
+        canopyGrad.addColorStop(1, 'rgba(255,150,180,0)');
+        ctx.fillStyle = canopyGrad;
+        ctx.beginPath();
+        ctx.arc(t.x, baseY, t.canopyR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
   drawSavePoints(renderer, map) {
     if (!map.savePoints) return;
     const ctx = renderer.ctx;
+    const now = Date.now();
     for (const sp of map.savePoints) {
       const sx = sp.x * TILE_SIZE - this.camera.x;
       const sy = sp.y * TILE_SIZE - this.camera.y;
-      if (sx < -TILE_SIZE || sx > GAME_WIDTH || sy < -TILE_SIZE || sy > GAME_HEIGHT) continue;
+      if (sx < -TILE_SIZE * 2 || sx > GAME_WIDTH + TILE_SIZE || sy < -TILE_SIZE * 2 || sy > GAME_HEIGHT + TILE_SIZE) continue;
 
-      const now = Date.now();
       const pulse = 0.4 + 0.3 * Math.sin(now / 400);
       const centerX = sx + TILE_SIZE / 2;
       const centerY = sy + TILE_SIZE / 2;
 
-      // Pulsing outer glow
-      renderer.drawGlow(centerX, centerY, TILE_SIZE * 0.8, '#7FFFD4', pulse * 0.4);
+      // Light pillar (vertical glow extending upward)
+      ctx.save();
+      const pillarH = 80;
+      const pillarGrad = ctx.createLinearGradient(centerX, centerY - pillarH, centerX, centerY + TILE_SIZE / 2);
+      pillarGrad.addColorStop(0, 'rgba(127,255,212,0)');
+      pillarGrad.addColorStop(0.3, `rgba(127,255,212,${0.06 + 0.04 * Math.sin(now / 600)})`);
+      pillarGrad.addColorStop(0.7, `rgba(200,255,240,${0.12 + 0.06 * Math.sin(now / 500)})`);
+      pillarGrad.addColorStop(1, 'rgba(127,255,212,0)');
+      ctx.fillStyle = pillarGrad;
+      ctx.fillRect(centerX - 10, centerY - pillarH, 20, pillarH + TILE_SIZE / 2);
+      ctx.restore();
+
+      // Pulsing outer aura
+      renderer.drawGlow(centerX, centerY, TILE_SIZE * 1.0, '#7FFFD4', pulse * 0.35);
+      renderer.drawGlow(centerX, centerY, TILE_SIZE * 0.6, '#AAFFEE', pulse * 0.25);
 
       // Inner glowing circle
       ctx.save();
@@ -1039,20 +1168,37 @@ class ExplorationScene extends Scene {
       ctx.fill();
       ctx.restore();
 
-      // Cross mark (rotating slowly)
+      // Rotating cross mark
       ctx.save();
       ctx.translate(centerX, centerY);
       ctx.rotate(now / 3000);
-      ctx.fillStyle = `rgba(255,255,255,${0.6 + 0.2 * Math.sin(now / 300)})`;
+      const crossAlpha = 0.6 + 0.2 * Math.sin(now / 300);
+      ctx.fillStyle = `rgba(255,255,255,${crossAlpha})`;
       ctx.fillRect(-1.5, -10, 3, 20);
       ctx.fillRect(-10, -1.5, 20, 3);
+      // Diagonal cross (faint)
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = `rgba(255,255,255,${crossAlpha * 0.4})`;
+      ctx.fillRect(-1, -7, 2, 14);
+      ctx.fillRect(-7, -1, 14, 2);
       ctx.restore();
+
+      // Orbiting particles (using drawGlow)
+      for (let i = 0; i < 4; i++) {
+        const angle = now / 1500 + (i * Math.PI / 2);
+        const orbitR = 14 + 3 * Math.sin(now / 800 + i);
+        const px = centerX + Math.cos(angle) * orbitR;
+        const py = centerY + Math.sin(angle) * orbitR * 0.6;
+        const pAlpha = 0.3 + 0.2 * Math.sin(now / 400 + i * 1.5);
+        renderer.drawGlow(px, py, 4, '#FFFFFF', pAlpha);
+      }
     }
   }
 
   drawChests(renderer, map) {
     if (!map.chests) return;
     const ctx = renderer.ctx;
+    const now = Date.now();
     for (const chest of map.chests) {
       const cx = chest.x * TILE_SIZE - this.camera.x;
       const cy = chest.y * TILE_SIZE - this.camera.y;
@@ -1061,24 +1207,38 @@ class ExplorationScene extends Scene {
       const opened = this.openedChests[chest.id];
 
       if (opened) {
-        // Opened chest - lid flipped up
-        // Body
-        ctx.fillStyle = '#8B7355';
+        // --- Opened chest: dark, no glow ---
+        // Shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.12)';
+        ctx.beginPath();
+        ctx.ellipse(cx + TILE_SIZE / 2, cy + TILE_SIZE - 2, TILE_SIZE * 0.3, 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+        // Body (darkened)
+        ctx.fillStyle = '#6B5B45';
         ctx.fillRect(cx + 4, cy + 14, TILE_SIZE - 8, TILE_SIZE - 18);
-        // Body highlight
-        ctx.fillStyle = 'rgba(255,255,255,0.1)';
-        ctx.fillRect(cx + 4, cy + 14, TILE_SIZE - 8, 2);
-        // Open lid (tilted)
-        ctx.fillStyle = '#6B5335';
+        // Body top edge
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.fillRect(cx + 4, cy + 14, TILE_SIZE - 8, 1);
+        // Open lid (tilted back)
+        ctx.fillStyle = '#5A4A34';
         ctx.fillRect(cx + 3, cy + 4, TILE_SIZE - 6, 6);
+        ctx.fillStyle = '#504030';
         ctx.fillRect(cx + 5, cy + 2, TILE_SIZE - 10, 4);
         // Dark interior
-        ctx.fillStyle = '#332211';
-        ctx.fillRect(cx + 6, cy + 14, TILE_SIZE - 12, 4);
+        ctx.fillStyle = '#221108';
+        ctx.fillRect(cx + 6, cy + 14, TILE_SIZE - 12, 5);
+        // Lid hinge dots
+        ctx.fillStyle = '#8B7355';
+        ctx.fillRect(cx + 5, cy + 10, 2, 2);
+        ctx.fillRect(cx + TILE_SIZE - 7, cy + 10, 2, 2);
       } else {
-        // Closed chest with shine
+        // --- Closed chest: golden glow ---
+        // Outer golden aura
+        const glowPulse = 0.25 + 0.15 * Math.sin(now / 600);
+        renderer.drawGlow(cx + TILE_SIZE / 2, cy + TILE_SIZE / 2 + 2, TILE_SIZE * 0.6, '#FFD700', glowPulse);
+
         // Shadow
-        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillStyle = 'rgba(0,0,0,0.18)';
         ctx.beginPath();
         ctx.ellipse(cx + TILE_SIZE / 2, cy + TILE_SIZE - 2, TILE_SIZE * 0.35, 3, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -1086,32 +1246,52 @@ class ExplorationScene extends Scene {
         ctx.fillStyle = '#B8860B';
         ctx.fillRect(cx + 4, cy + 12, TILE_SIZE - 8, TILE_SIZE - 16);
         // Body gradient highlight
-        ctx.fillStyle = 'rgba(255,255,255,0.15)';
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
         ctx.fillRect(cx + 4, cy + 12, TILE_SIZE - 8, 3);
+        // Body bottom edge shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.fillRect(cx + 4, cy + TILE_SIZE - 5, TILE_SIZE - 8, 1);
         // Lid
         ctx.fillStyle = '#DAA520';
         ctx.fillRect(cx + 2, cy + 6, TILE_SIZE - 4, 8);
-        // Lid top highlight
-        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        // Lid top highlight (stronger)
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
         ctx.fillRect(cx + 2, cy + 6, TILE_SIZE - 4, 2);
+        // Lid side shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.1)';
+        ctx.fillRect(cx + 2, cy + 12, TILE_SIZE - 4, 1);
         // Metal clasp
         ctx.fillStyle = '#FFD700';
         ctx.fillRect(cx + 12, cy + 12, 8, 4);
-        // Keyhole glow
-        const shine = 0.5 + 0.4 * Math.sin(Date.now() / 500);
-        renderer.drawGlow(cx + TILE_SIZE / 2, cy + 17, 6, '#FFD700', shine);
-        ctx.fillStyle = `rgba(255,255,255,${shine * 0.8})`;
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillRect(cx + 13, cy + 12, 6, 1);
+
+        // Keyhole with pulsing glow
+        const shine = 0.5 + 0.4 * Math.sin(now / 500);
+        renderer.drawGlow(cx + TILE_SIZE / 2, cy + 17, 8, '#FFD700', shine);
+        // Keyhole bright core
+        ctx.fillStyle = `rgba(255,255,220,${shine * 0.9})`;
         ctx.fillRect(cx + 14, cy + 13, 4, 2);
+        ctx.fillStyle = `rgba(255,255,255,${shine * 0.6})`;
+        ctx.fillRect(cx + 15, cy + 12, 2, 1);
       }
     }
   }
 
   drawNPCs(renderer, map) {
+    const ctx = renderer.ctx;
     for (const npc of map.npcs) {
       const nx = npc.x * TILE_SIZE - this.camera.x;
       const ny = npc.y * TILE_SIZE - this.camera.y;
       if (nx < -TILE_SIZE || nx > GAME_WIDTH || ny < -TILE_SIZE || ny > GAME_HEIGHT) continue;
 
+      // Foot shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
+      ctx.beginPath();
+      ctx.ellipse(nx + TILE_SIZE / 2, ny + TILE_SIZE - 1, TILE_SIZE * 0.3, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw NPC pixel character
       const pixelType = this._getNpcPixelType(npc);
       if (PIXEL_CHARS[pixelType]) {
         renderer.drawPixelChar(nx + 2, ny, 3, pixelType, { direction: 'down', frame: 0 });
@@ -1119,43 +1299,66 @@ class ExplorationScene extends Scene {
         renderer.drawSprite(nx + 4, ny + 2, TILE_SIZE - 8, TILE_SIZE - 4, npc.spriteData);
       }
 
-      // 名前表示（近くにいるときのみ）
+      // Name display (only when player is within 3 tiles)
       const dist = Math.abs(npc.x - this.player.x) + Math.abs(npc.y - this.player.y);
-      if (dist <= 2) {
-        // Name background
-        const nameW = npc.name.length * 11 + 10;
-        renderer.drawRoundedRect(nx + TILE_SIZE / 2 - nameW / 2, ny - 18, nameW, 16, 4,
-          'rgba(0,0,0,0.5)', null);
-        renderer.drawText(npc.name, nx + TILE_SIZE / 2, ny - 16,
+      if (dist <= 3) {
+        const nameAlpha = dist <= 2 ? 1 : 0.6;
+        const nameW = npc.name.length * 11 + 12;
+        ctx.save();
+        ctx.globalAlpha = nameAlpha;
+        renderer.drawRoundedRect(nx + TILE_SIZE / 2 - nameW / 2, ny - 20, nameW, 17, 4,
+          'rgba(0,0,0,0.55)', null);
+        renderer.drawText(npc.name, nx + TILE_SIZE / 2, ny - 18,
           { size: 10, color: '#FFE', align: 'center', shadow: true });
+        ctx.restore();
       }
     }
   }
 
   drawEnemySymbols(renderer) {
     const ctx = renderer.ctx;
+    const now = Date.now();
     for (const enemy of this.enemySymbols) {
       const ex = enemy.pixelX - this.camera.x;
       const ey = enemy.pixelY - this.camera.y;
-      if (ex < -TILE_SIZE || ex > GAME_WIDTH || ey < -TILE_SIZE || ey > GAME_HEIGHT) continue;
+      if (ex < -TILE_SIZE * 2 || ex > GAME_WIDTH + TILE_SIZE || ey < -TILE_SIZE * 2 || ey > GAME_HEIGHT + TILE_SIZE) continue;
 
       const pixelType = this._getEnemyPixelType(enemy);
+      const centerX = ex + TILE_SIZE / 2;
+      const centerY = ey + TILE_SIZE / 2;
+
+      // Detection range circle (faint)
+      const distToPlayer = Math.abs(enemy.x - this.player.x) + Math.abs(enemy.y - this.player.y);
+      const rangeColor = distToPlayer <= 3 ? 'rgba(255,120,40,0.08)' : 'rgba(180,120,200,0.04)';
+      if (distToPlayer <= 5) {
+        ctx.fillStyle = rangeColor;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, TILE_SIZE * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       if (enemy.isBoss) {
-        // Boss: larger display with red aura
-        const aura = 0.2 + 0.15 * Math.sin(Date.now() / 300);
-        renderer.drawGlow(ex + TILE_SIZE / 2, ey + TILE_SIZE / 2, TILE_SIZE * 0.9, '#FF2222', aura);
+        // Boss: larger display with pulsing red aura
+        const aura = 0.2 + 0.15 * Math.sin(now / 300);
+        renderer.drawGlow(centerX, centerY, TILE_SIZE * 1.2, '#FF2222', aura);
+        renderer.drawGlow(centerX, centerY, TILE_SIZE * 0.7, '#FF6644', aura * 0.6);
 
         if (PIXEL_CHARS[pixelType]) {
-          renderer.drawPixelChar(ex, ey - 4, 3, pixelType, { direction: 'down', frame: Math.floor(Date.now() / 600) % 2 });
+          // Boss uses scale=4 for larger appearance
+          renderer.drawPixelChar(ex - 6, ey - 8, 4, pixelType, { direction: 'down', frame: Math.floor(now / 600) % 2 });
         } else {
           // Fallback boss rendering
           ctx.fillStyle = '#8B0000';
           ctx.beginPath();
-          ctx.moveTo(ex + TILE_SIZE / 2, ey + 2);
+          ctx.moveTo(centerX, ey + 2);
           ctx.lineTo(ex + TILE_SIZE - 2, ey + TILE_SIZE - 2);
           ctx.lineTo(ex + 2, ey + TILE_SIZE - 2);
           ctx.closePath();
+          ctx.fill();
+          // Boss eye
+          ctx.fillStyle = '#FF4444';
+          ctx.beginPath();
+          ctx.arc(centerX, ey + TILE_SIZE * 0.4, 3, 0, Math.PI * 2);
           ctx.fill();
         }
       } else {
@@ -1163,14 +1366,14 @@ class ExplorationScene extends Scene {
         if (PIXEL_CHARS[pixelType]) {
           renderer.drawPixelChar(ex + 2, ey, 3, pixelType, {
             direction: 'down',
-            frame: Math.floor(Date.now() / 400) % 2,
+            frame: Math.floor(now / 400) % 2,
           });
         } else {
           // Fallback: triangle-shaped monster
           const bodyColor = enemy.chasing ? '#CC3333' : '#884488';
           ctx.fillStyle = bodyColor;
           ctx.beginPath();
-          ctx.moveTo(ex + TILE_SIZE / 2, ey + 4);
+          ctx.moveTo(centerX, ey + 4);
           ctx.lineTo(ex + TILE_SIZE - 6, ey + TILE_SIZE - 4);
           ctx.lineTo(ex + 6, ey + TILE_SIZE - 4);
           ctx.closePath();
@@ -1182,9 +1385,10 @@ class ExplorationScene extends Scene {
         }
 
         if (enemy.chasing) {
-          // Chase indicator with glow
-          renderer.drawGlow(ex + TILE_SIZE / 2, ey - 4, 8, '#FF4444', 0.6);
-          renderer.drawText('!', ex + TILE_SIZE / 2, ey - 14,
+          // Chase indicator with glow and bounce
+          const bounce = Math.abs(Math.sin(now / 150)) * 4;
+          renderer.drawGlow(centerX, ey - 6 - bounce, 10, '#FF4444', 0.7);
+          renderer.drawText('!', centerX, ey - 16 - bounce,
             { size: 14, color: '#FF4444', align: 'center', shadow: true,
               outline: true, outlineColor: '#000', outlineWidth: 2 });
         }
@@ -1193,32 +1397,63 @@ class ExplorationScene extends Scene {
   }
 
   drawPlayer(renderer) {
+    const ctx = renderer.ctx;
     const px = this.player.pixelX - this.camera.x;
     const py = this.player.pixelY - this.camera.y;
 
-    // Draw player using pixel character system
-    renderer.drawPixelChar(px + 2, py - 2, 3, 'hero', {
-      direction: this.player.direction,
-      frame: this.player.moving ? this.player.animFrame : 0,
-      season: (this.game.state.party && this.game.state.party.getLeader()) ? this.game.state.party.getLeader().currentSeason : null,
-    });
+    // Foot shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    ctx.beginPath();
+    ctx.ellipse(px + TILE_SIZE / 2, py + TILE_SIZE - 1, TILE_SIZE * 0.32, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Determine season for glow
+    const leader = (this.game.state.party && this.game.state.party.getLeader) ? this.game.state.party.getLeader() : null;
+    const season = leader ? leader.currentSeason : null;
+
+    // Draw player using pixel character system (scale=3)
+    if (PIXEL_CHARS['hero']) {
+      renderer.drawPixelChar(px + 2, py - 2, 3, 'hero', {
+        direction: this.player.direction,
+        frame: this.player.moving ? this.player.animFrame : 0,
+        season: season,
+      });
+    } else {
+      // Fallback: simple colored rectangle
+      renderer.drawSprite(px + 4, py + 2, TILE_SIZE - 8, TILE_SIZE - 4, {
+        bodyColor: '#4488CC', headColor: '#FFD699', season: season,
+      });
+    }
   }
 
   drawMinimap(renderer, map) {
+    const ctx = renderer.ctx;
+    const now = Date.now();
     const mmW = 160;
     const mmH = 100;
     const mmX = GAME_WIDTH - mmW - 10;
     const mmY = 10;
 
-    // 背景 with subtle border glow
-    renderer.drawRoundedRect(mmX - 1, mmY - 1, mmW + 2, mmH + 2, 4,
-      'rgba(255,255,255,0.1)', null);
-    renderer.drawRoundedRect(mmX, mmY, mmW, mmH, 3,
-      'rgba(0,0,0,0.75)', 'rgba(255,255,255,0.2)');
+    // Border glow (subtle)
+    renderer.drawGlow(mmX + mmW / 2, mmY + mmH / 2, mmW * 0.6, 'rgba(100,200,255,0.15)', 0.3);
 
-    // タイルサイズの計算
-    const scaleX = mmW / map.width;
-    const scaleY = mmH / map.height;
+    // Background with gradient
+    ctx.save();
+    const bgGrad = ctx.createLinearGradient(mmX, mmY, mmX, mmY + mmH);
+    bgGrad.addColorStop(0, 'rgba(10,15,30,0.85)');
+    bgGrad.addColorStop(1, 'rgba(20,25,50,0.8)');
+    renderer.drawRoundedRect(mmX, mmY, mmW, mmH, 4, null, null);
+    // Fill manually with gradient inside rounded rect
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(mmX + 1, mmY + 1, mmW - 2, mmH - 2);
+    ctx.restore();
+
+    // Border
+    renderer.drawRoundedRect(mmX, mmY, mmW, mmH, 4, null, 'rgba(150,200,255,0.25)');
+
+    // Tile scale calculation
+    const scaleX = (mmW - 4) / map.width;
+    const scaleY = (mmH - 4) / map.height;
     const scale = Math.min(scaleX, scaleY);
     const offsetX = mmX + (mmW - map.width * scale) / 2;
     const offsetY = mmY + (mmH - map.height * scale) / 2;
@@ -1232,10 +1467,11 @@ class ExplorationScene extends Scene {
 
         const tile = map.tiles[ty][tx];
         let dotColor = '#555';
-        if (tile === TILE.WALL) dotColor = '#888';
-        else if (tile === TILE.FLOOR || tile === TILE.EMPTY) dotColor = '#CCC';
-        else if (tile === TILE.WATER) dotColor = '#4488CC';
+        if (tile === TILE.WALL) dotColor = '#6B6B8B';
+        else if (tile === TILE.FLOOR || tile === TILE.EMPTY) dotColor = '#B8B8CC';
+        else if (tile === TILE.WATER) dotColor = '#4488DD';
         else if (tile === TILE.ENTRANCE) dotColor = '#FFD700';
+        else if (tile === TILE.SAVE) dotColor = '#55FFDD';
 
         const dx = offsetX + tx * scale;
         const dy = offsetY + ty * scale;
@@ -1243,27 +1479,52 @@ class ExplorationScene extends Scene {
       }
     }
 
-    // NPCドット
+    // Save point dots (bright cyan)
+    if (map.savePoints) {
+      for (const sp of map.savePoints) {
+        const spx = offsetX + sp.x * scale;
+        const spy = offsetY + sp.y * scale;
+        const spBlink = 0.6 + 0.4 * Math.sin(now / 500);
+        renderer.drawRect(spx - 0.5, spy - 0.5, Math.max(2, scale + 1), Math.max(2, scale + 1),
+          `rgba(85,255,221,${spBlink})`);
+      }
+    }
+
+    // Chest dots (yellow)
+    if (map.chests) {
+      for (const chest of map.chests) {
+        if (this.openedChests[chest.id]) continue;
+        const chx = offsetX + chest.x * scale;
+        const chy = offsetY + chest.y * scale;
+        renderer.drawRect(chx, chy, Math.max(2, scale + 1), Math.max(2, scale + 1), '#FFD700');
+      }
+    }
+
+    // NPC dots (green)
     for (const npc of map.npcs) {
       const nx = offsetX + npc.x * scale;
       const ny = offsetY + npc.y * scale;
-      renderer.drawRect(nx, ny, Math.max(2, scale + 1), Math.max(2, scale + 1), '#00FF00');
+      renderer.drawRect(nx, ny, Math.max(2, scale + 1), Math.max(2, scale + 1), '#44FF66');
     }
 
-    // 敵シンボルドット
+    // Enemy symbol dots (small red)
     for (const enemy of this.enemySymbols) {
       const ex = offsetX + enemy.x * scale;
       const ey = offsetY + enemy.y * scale;
-      const ec = enemy.isBoss ? '#FF0000' : '#FF66FF';
-      renderer.drawRect(ex, ey, Math.max(2, scale + 1), Math.max(2, scale + 1), ec);
+      const ec = enemy.isBoss ? '#FF3333' : '#FF5555';
+      const sz = Math.max(2, scale);
+      renderer.drawRect(ex, ey, sz, sz, ec);
     }
 
-    // プレイヤードット（点滅）
-    const blink = Math.sin(Date.now() / 200) > 0;
-    if (blink) {
-      const ppx = offsetX + this.player.x * scale;
-      const ppy = offsetY + this.player.y * scale;
-      renderer.drawRect(ppx - 1, ppy - 1, Math.max(3, scale + 2), Math.max(3, scale + 2), '#FFFF00');
-    }
+    // Player dot (pulsing bright, always visible)
+    const blinkVal = 0.5 + 0.5 * Math.sin(now / 150);
+    const ppx = offsetX + this.player.x * scale;
+    const ppy = offsetY + this.player.y * scale;
+    const dotSz = Math.max(3, scale + 2);
+    // Outer glow
+    renderer.drawGlow(ppx + dotSz / 2, ppy + dotSz / 2, dotSz * 2, '#FFFF44', blinkVal * 0.5);
+    // Core dot
+    ctx.fillStyle = `rgba(255,255,80,${0.7 + blinkVal * 0.3})`;
+    ctx.fillRect(ppx - 1, ppy - 1, dotSz, dotSz);
   }
 }
