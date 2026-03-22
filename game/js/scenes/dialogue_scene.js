@@ -160,6 +160,7 @@ class DialogueScene extends Scene {
   // Draw
   // -----------------------------------------------
   draw(renderer) {
+    renderer.ctx.globalAlpha = 1;
     // === 背景: 暗い背景 ===
     renderer.drawRect(0, 0, GAME_WIDTH, GAME_HEIGHT, '#0a0a15', 1);
     // 季節カラーのわずかなアクセント（上部にグラデーション風）

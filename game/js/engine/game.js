@@ -55,6 +55,7 @@ class Game {
   }
 
   draw() {
+    this.renderer.ctx.globalAlpha = 1;
     this.renderer.clear('#1a1a2e');
     this.renderer.applyShake();
     this.scenes.draw(this.renderer);

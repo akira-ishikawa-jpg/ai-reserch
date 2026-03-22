@@ -734,6 +734,7 @@ class BattleScene extends Scene {
 
   draw(renderer) {
     if (!this.engine) return;
+    renderer.ctx.globalAlpha = 1;
 
     this._drawBackground(renderer);
     this._drawUnits(renderer);
