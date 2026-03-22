@@ -1,5 +1,8 @@
 extends Node3D
 ## 探索シーンメイン
+
+const MapsDataRef = preload("res://scripts/data/maps_data.gd")
+const BuildingGeneratorRef = preload("res://scripts/exploration/building_generator.gd")
 ## マップデータを3D空間に配置し、プレイヤーの移動・マップ遷移を管理する
 ## HD-2D演出：建物CSG生成、降り注ぐ光、光の粒パーティクル、スプライトリムライト
 
@@ -25,7 +28,13 @@ func _ready():
 	var map_id = "kasumikari"
 	if GameState.current_map != "":
 		map_id = GameState.current_map
+	print("[Exploration] Loading map: ", map_id)
 	load_map(map_id)
+	print("[Exploration] Map loaded. Tiles: ", current_map_data.get("width", 0), "x", current_map_data.get("height", 0))
+	print("[Exploration] Player pos: ", player.position)
+	print("[Exploration] Camera pos: ", camera.position)
+	print("[Exploration] Ground children: ", ground_node.get_child_count())
+	print("[Exploration] TextureGenerator textures: ", TextureGenerator.textures.size())
 
 	GameState.current_map = current_map_data.get("id", "kasumikari")
 	_setup_season_lighting()
@@ -41,7 +50,7 @@ func _ready():
 
 func load_map(map_id: String, spawn_pos: Vector2i = Vector2i(-1, -1)):
 	_clear_map()
-	current_map_data = MapsData.get_map(map_id)
+	current_map_data = MapsDataRef.get_map(map_id)
 	if current_map_data.is_empty():
 		push_error("Failed to load map: " + map_id)
 		return
@@ -103,7 +112,7 @@ func _clear_map():
 			child.queue_free()
 
 func _place_tile(x: int, y: int, tile_type: int, map_id: String):
-	if tile_type == MapsData.TILE_WALL:
+	if tile_type == MapsDataRef.TILE_WALL:
 		_place_wall(x, y, map_id)
 	else:
 		_place_floor(x, y, tile_type, map_id)
@@ -119,19 +128,19 @@ func _place_floor(x: int, y: int, tile_type: int, _map_id: String):
 
 	# タイルタイプに応じたテクスチャ
 	match tile_type:
-		MapsData.TILE_FLOOR, MapsData.TILE_EMPTY, MapsData.TILE_NPC, MapsData.TILE_DOOR:
+		MapsDataRef.TILE_FLOOR, MapsDataRef.TILE_EMPTY, MapsDataRef.TILE_NPC, MapsDataRef.TILE_DOOR:
 			# マップが洞窟かどうかで床テクスチャを切り替え
 			if _map_id.begins_with("sennen"):
 				mat.albedo_texture = TextureGenerator.textures.get("floor_cave", null)
 			else:
 				mat.albedo_texture = TextureGenerator.textures.get("floor_stone", null)
-		MapsData.TILE_WATER:
+		MapsDataRef.TILE_WATER:
 			mat.albedo_texture = TextureGenerator.textures.get("floor_water", null)
-		MapsData.TILE_ENTRANCE:
+		MapsDataRef.TILE_ENTRANCE:
 			mat.albedo_texture = TextureGenerator.textures.get("floor_entrance", null)
-		MapsData.TILE_SAVE:
+		MapsDataRef.TILE_SAVE:
 			mat.albedo_texture = TextureGenerator.textures.get("floor_save", null)
-		MapsData.TILE_CHEST:
+		MapsDataRef.TILE_CHEST:
 			mat.albedo_texture = TextureGenerator.textures.get("floor_chest", null)
 		_:
 			mat.albedo_texture = TextureGenerator.textures.get("floor_stone", null)
@@ -260,7 +269,7 @@ func _is_tile_passable(world_pos: Vector3) -> bool:
 		return false
 
 	var tile_type: int = tiles[tile_y][tile_x]
-	return MapsData.is_passable(tile_type)
+	return MapsDataRef.is_passable(tile_type)
 
 # ==========================================
 # 毎フレーム：出口チェック
@@ -324,18 +333,18 @@ func _try_interact():
 func _place_buildings():
 	var npcs: Array = current_map_data.get("npcs", [])
 	for npc_data in npcs:
-		var btype = BuildingGenerator.BuildingType.HOUSE_SMALL
+		var btype = BuildingGeneratorRef.BuildingType.HOUSE_SMALL
 		match npc_data["id"]:
 			"innkeeper":
-				btype = BuildingGenerator.BuildingType.INN
+				btype = BuildingGeneratorRef.BuildingType.INN
 			"merchant":
-				btype = BuildingGenerator.BuildingType.SHOP
+				btype = BuildingGeneratorRef.BuildingType.SHOP
 			"yakushi_master":
-				btype = BuildingGenerator.BuildingType.GUILD
+				btype = BuildingGeneratorRef.BuildingType.GUILD
 
 		# NPC位置から少し奥（-Z方向）に建物を配置
 		var build_pos = Vector3(npc_data["x"], 0, npc_data["y"] - 2)
-		var building = BuildingGenerator.create_building(btype, build_pos)
+		var building = BuildingGeneratorRef.create_building(btype, build_pos)
 		add_child(building)
 
 # ==========================================
