@@ -15,10 +15,19 @@ class PixiRenderer {
     this._seasonTintGraphics = null;
     this._edgeGlowGraphics = null;
 
+    // DOF（被写界深度）用
+    this._dofTexture = null;
+    this._dofTopSprite = null;
+    this._dofBottomSprite = null;
+    this._dofTopMaskSprite = null;
+    this._dofBottomMaskSprite = null;
+    this._dofContainer = null;
+
     // エフェクトON/OFFフラグ
     this.vignetteEnabled = true;
     this.seasonTintEnabled = true;
     this.edgeGlowEnabled = true;
+    this.dofEnabled = true;
 
     // 季節ティントカラー設定（alpha控えめ）
     this.seasonTints = {
@@ -93,6 +102,15 @@ class PixiRenderer {
       this._createVignetteLayer();
       this._createSeasonTintLayer();
       this._createEdgeGlowLayer();
+
+      // DOF（被写界深度）レイヤーを構築
+      try {
+        this._createDofLayers();
+        console.log('[PixiRenderer] DOF layers created.');
+      } catch (dofErr) {
+        console.warn('[PixiRenderer] DOF initialization failed, disabling DOF:', dofErr.message);
+        this.dofEnabled = false;
+      }
 
       // tickerで自動レンダリング（手動renderは不要）
       this.app.ticker.add(() => {
@@ -185,6 +203,85 @@ class PixiRenderer {
     this.effectContainer.addChild(this._edgeGlowSprite);
   }
 
+  /**
+   * DOF（被写界深度）レイヤー — チルトシフト風ぼかし
+   * 既存ゲームCanvasの内容をテクスチャとして取り込み、
+   * 画面上部と下部にBlurFilterをかけたスプライトをオーバーレイする。
+   * 中央部分はマスクによって透明になるため、元のCanvasがシャープなまま見える。
+   */
+  _createDofLayers() {
+    const w = GAME_WIDTH;
+    const h = GAME_HEIGHT;
+
+    // DOF用コンテナ（他エフェクトの前面＝最後に追加）
+    this._dofContainer = new PIXI.Container();
+    // エフェクトコンテナではなくstageに直接追加（effectContainerの前面）
+    this.app.stage.addChildAt(this._dofContainer, 0);
+
+    // 既存ゲームCanvasからテクスチャを生成
+    this._dofTexture = PIXI.Texture.from(this._gameCanvas);
+
+    // ぼかし強度（控えめに開始）
+    const blurStrength = 3;
+
+    // --- 上部DOFゾーン ---
+    // 上部20%をカバーするが、グラデーションマスクで中央に向かって透明にする
+    const topZoneHeight = Math.floor(h * 0.30); // マスクの範囲は30%（グラデーション含む）
+
+    this._dofTopSprite = new PIXI.Sprite(this._dofTexture);
+    this._dofTopSprite.width = w;
+    this._dofTopSprite.height = h;
+    this._dofTopSprite.filters = [new PIXI.BlurFilter(blurStrength, 2)];
+
+    // 上部グラデーションマスク: 上端が不透明、中央に向かって透明
+    const topMaskCanvas = document.createElement('canvas');
+    topMaskCanvas.width = w;
+    topMaskCanvas.height = h;
+    const topMaskCtx = topMaskCanvas.getContext('2d');
+    const topGrad = topMaskCtx.createLinearGradient(0, 0, 0, topZoneHeight);
+    topGrad.addColorStop(0, 'rgba(255,255,255,1)');
+    topGrad.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+    topGrad.addColorStop(1, 'rgba(255,255,255,0)');
+    topMaskCtx.fillStyle = topGrad;
+    topMaskCtx.fillRect(0, 0, w, topZoneHeight);
+    // 残りは透明のまま（何も描かない）
+
+    const topMaskTexture = PIXI.Texture.from(topMaskCanvas);
+    this._dofTopMaskSprite = new PIXI.Sprite(topMaskTexture);
+    this._dofTopSprite.mask = this._dofTopMaskSprite;
+
+    this._dofContainer.addChild(this._dofTopSprite);
+    this._dofContainer.addChild(this._dofTopMaskSprite);
+
+    // --- 下部DOFゾーン ---
+    const bottomZoneHeight = Math.floor(h * 0.30);
+    const bottomStart = h - bottomZoneHeight;
+
+    this._dofBottomSprite = new PIXI.Sprite(this._dofTexture);
+    this._dofBottomSprite.width = w;
+    this._dofBottomSprite.height = h;
+    this._dofBottomSprite.filters = [new PIXI.BlurFilter(blurStrength, 2)];
+
+    // 下部グラデーションマスク: 下端が不透明、中央に向かって透明
+    const bottomMaskCanvas = document.createElement('canvas');
+    bottomMaskCanvas.width = w;
+    bottomMaskCanvas.height = h;
+    const bottomMaskCtx = bottomMaskCanvas.getContext('2d');
+    const bottomGrad = bottomMaskCtx.createLinearGradient(0, bottomStart, 0, h);
+    bottomGrad.addColorStop(0, 'rgba(255,255,255,0)');
+    bottomGrad.addColorStop(0.5, 'rgba(255,255,255,0.6)');
+    bottomGrad.addColorStop(1, 'rgba(255,255,255,1)');
+    bottomMaskCtx.fillStyle = bottomGrad;
+    bottomMaskCtx.fillRect(0, bottomStart, w, bottomZoneHeight);
+
+    const bottomMaskTexture = PIXI.Texture.from(bottomMaskCanvas);
+    this._dofBottomMaskSprite = new PIXI.Sprite(bottomMaskTexture);
+    this._dofBottomSprite.mask = this._dofBottomMaskSprite;
+
+    this._dofContainer.addChild(this._dofBottomSprite);
+    this._dofContainer.addChild(this._dofBottomMaskSprite);
+  }
+
   // ==========================================
   // 描画ヘルパー
   // ==========================================
@@ -249,6 +346,21 @@ class PixiRenderer {
       this._seasonTintGraphics.visible = this.seasonTintEnabled;
       this._edgeGlowSprite.visible = this.edgeGlowEnabled;
 
+      // DOF テクスチャ更新（毎フレーム、ゲームCanvasの最新内容を反映）
+      if (this.dofEnabled && this._dofContainer) {
+        try {
+          this._dofTexture.update();
+          this._dofContainer.visible = true;
+        } catch (dofErr) {
+          // DOFのテクスチャ更新に失敗した場合、DOFのみ無効化
+          console.warn('[PixiRenderer] DOF texture update failed, disabling DOF:', dofErr.message);
+          this.dofEnabled = false;
+          if (this._dofContainer) this._dofContainer.visible = false;
+        }
+      } else if (this._dofContainer) {
+        this._dofContainer.visible = false;
+      }
+
       // 季節が変わった場合のみティント・グローを再描画
       if (season && season !== this._currentSeason) {
         this._currentSeason = season;
@@ -289,7 +401,7 @@ class PixiRenderer {
       case 'edgeGlow': this.edgeGlowEnabled = enabled; break;
       // レガシー互換
       case 'bloom': this.edgeGlowEnabled = enabled; break;
-      case 'dof': break; // 被写界深度は廃止
+      case 'dof': this.dofEnabled = enabled; break;
     }
   }
 
@@ -300,6 +412,7 @@ class PixiRenderer {
     this.vignetteEnabled = enabled;
     this.seasonTintEnabled = enabled;
     this.edgeGlowEnabled = enabled;
+    this.dofEnabled = enabled;
   }
 
   /**
@@ -349,6 +462,12 @@ class PixiRenderer {
     this._edgeGlowTexture = null;
     this._edgeGlowCanvas = null;
     this._edgeGlowCtx = null;
+    this._dofTexture = null;
+    this._dofTopSprite = null;
+    this._dofBottomSprite = null;
+    this._dofTopMaskSprite = null;
+    this._dofBottomMaskSprite = null;
+    this._dofContainer = null;
     this.effectContainer = null;
   }
 }
