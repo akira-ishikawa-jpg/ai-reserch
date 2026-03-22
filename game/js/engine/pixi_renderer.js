@@ -52,6 +52,11 @@ class PixiRenderer {
    * @returns {boolean} 初期化成功ならtrue
    */
   init(gameCanvas) {
+    // PixiJS post-processing temporarily disabled for stability
+    // TODO: Fix texture update issue and re-enable
+    console.log('[PixiRenderer] Post-processing disabled (stability fix). Using Canvas 2D.');
+    return false;
+
     // PixiJSが読み込まれているか確認
     if (typeof PIXI === 'undefined') {
       console.warn('[PixiRenderer] PixiJS not loaded. Falling back to Canvas 2D only.');
