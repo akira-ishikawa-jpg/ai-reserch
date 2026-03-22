@@ -166,6 +166,10 @@ class BattleScene extends Scene {
 
   update(dt) {
     if (!this.engine) return;
+    // Safety: prevent infinite loop by limiting state transitions per frame
+    if (this._updateGuard) { console.warn('[Battle] update re-entered!'); return; }
+    this._updateGuard = true;
+    try {
 
     const input = this.game.input;
 
@@ -231,6 +235,13 @@ class BattleScene extends Scene {
       case 'result':
         this._updateResult(dt, input);
         break;
+    }
+
+    } catch(e) {
+      console.error('[Battle] update error:', e.message, e.stack);
+      this._error = e.message;
+    } finally {
+      this._updateGuard = false;
     }
   }
 
