@@ -464,8 +464,6 @@ class BattleScene extends Scene {
     } else if (skill.target === TARGETS.SELF) {
       this._executeAndAnimate({ type: 'skill', actor: unit, target: unit, skill });
     } else {
-      this._executeAndAnimate({ type: 'skill', actor: unit, skill });
-    } else {
       const target = this.engine.enemies.find(e => e.alive);
       this._executeAndAnimate({ type: 'skill', actor: unit, target, skill });
     }
